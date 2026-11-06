@@ -300,7 +300,7 @@ function renderRows() {
     row.className = 'sid-row' + (g.key === S.key ? ' current' : '');
     row.dataset.key = g.key;
     const cb = document.createElement('input');
-    cb.type = 'checkbox'; cb.checked = S.checked.has(g.key); cb.dataset.key = g.key;
+    cb.type = 'checkbox'; cb.checked = S.checked.has(g.key) || g.key === S.key; cb.dataset.key = g.key;
     cb.setAttribute('aria-label', `Compare ${g.label}`);
     const sw = document.createElement('span');
     sw.className = 'sid-swatch';
@@ -340,8 +340,16 @@ function setCurrent(key) {
   renderEpochs();
 }
 
+/** A row's box is ticked when it is plotted. Ticking keeps the current row too; unticking the current row hands over to another plotted one. */
 function onTick(key, on) {
-  if (on) S.checked.add(key); else S.checked.delete(key);
+  if (on) {
+    S.checked.add(key);
+    if (S.key) S.checked.add(S.key);
+  } else {
+    S.checked.delete(key);
+    const next = key === S.key ? plottedGroups().find((g) => g.key !== key) : null;
+    if (next) { setCurrent(next.key); return; }
+  }
   renderRows();
   updateAll();
   recompute();
@@ -562,6 +570,13 @@ function updateAll() {
   } else if (chan && chan.instrument) lines.push(`Instrument: <b>${esc(chan.instrument)}</b>`);
   instrument.hidden = !lines.length;
   instrument.innerHTML = lines.join('');
+
+  // Name the response the stage table applies to when several are plotted.
+  const stageFor = $('stageFor');
+  const slot = plottedGroups().findIndex((p) => p.key === S.key);
+  stageFor.hidden = !(group && plottedGroups().length > 1 && slot >= 0);
+  stageFor.innerHTML = stageFor.hidden ? ''
+    : `<span class="sid-swatch" style="background:var(${plotColor(slot)})"></span>for <b style="color:var(${plotColor(slot)})">${esc(group.label)}</b>`;
 
   const tbl = $('stageTable'), body = tbl.querySelector('tbody');
   body.innerHTML = '';

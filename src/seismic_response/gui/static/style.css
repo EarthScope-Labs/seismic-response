@@ -167,6 +167,9 @@ details > button { margin-top: .6rem; }
 .tablewrap { overflow-x: auto; }
 table { border-collapse: collapse; width: 100%; font-size: .82rem; font-variant-numeric: tabular-nums; }
 caption { text-align: left; font-weight: 600; font-size: .9rem; padding: .3rem 0; }
+.stage-for { display: inline-flex; align-items: center; gap: .35rem; margin-left: .5rem; font-weight: 400; color: var(--muted); }
+.stage-for[hidden] { display: none; }
+.stage-for b { font-weight: 600; }
 th, td { text-align: left; padding: .3rem .5rem; border-bottom: 1px solid var(--border); white-space: nowrap; }
 th { color: var(--muted); font-weight: 600; }
 td.stage-num { font-weight: 600; }

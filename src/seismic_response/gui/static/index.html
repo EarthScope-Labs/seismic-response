@@ -141,7 +141,7 @@
     <div id="summary" class="summary"></div>
     <div id="instrument" class="summary" hidden></div>
     <div class="tablewrap"><table id="stageTable" hidden>
-      <caption>Stages</caption>
+      <caption>Stages<span id="stageFor" class="stage-for" hidden></span></caption>
       <thead><tr><th class="usecol"><button type="button" id="useAll" class="mini" aria-label="Select or deselect all stages"></button></th><th>Stage</th><th>Type</th><th>Gain</th><th>Gain freq (Hz)</th><th>Units (in → out)</th><th>Rate (Hz)</th></tr></thead>
       <tbody></tbody>
     </table></div>
@@ -176,8 +176,10 @@
       <dd>Each loaded file or fetch is kept separate: a Source ID that appears in more than one is listed once per
         source and numbered (<em>#1</em>, <em>#2</em>, …), and hovering over an entry shows the file name or
         service query it came from. Click a row (or use the up and down arrow keys) to switch to that response, the
-        <em>current</em> one (highlighted). Tick a row's box to keep it in the plot for comparison: ticked rows stay
-        plotted when you select another row, and unticked ones are replaced. The epoch choice, stage table, summary
+        <em>current</em> one (highlighted). A ticked box means the response is plotted: the current row is always
+        ticked, and ticking another row keeps both in the plot for comparison. Ticked rows stay plotted when you
+        select another row, and unticked ones are replaced. Unticking the current row makes another ticked row
+        current. The epoch choice, stage table, summary
         and text export follow the current response, while the others use the epoch at the evaluation time with all
         stages included. The Source ID filter is a glob, or a substring when it has no wildcards; ticks are kept
         while filtering and only visible ticked responses are plotted. The evaluation time is UTC
