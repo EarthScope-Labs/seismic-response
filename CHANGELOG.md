@@ -3,4 +3,6 @@
 ## v0.1.0
 
 - Initial version
-  - evalresp compatibility with considered deviations (defaulting to response units)
+  - pure python package for calculating responses programmatically
+  - evalresp compatibility with considered deviations
+  - Web-compatible (and desktop friendly) app for visualizing responses

@@ -6,7 +6,7 @@ match the C [`evalresp`](https://github.com/EarthScope/evalresp) program, as a
 * **Python library**: pure Python, no dependencies, runs unchanged under [Pyodide](https://pyodide.org) (WebAssembly)
 * **evalresp-compatible command line**: `pyevalresp`
 * **interactive GUI**: a web app (plots amplitude and phase, per-stage curves, FDSN fetch, export) that runs
-  locally, as a desktop window, or entirely in the browser with no server
+  locally, as a desktop window, or entirely in the browser with no server ([try it](https://earthscope-labs.github.io/seismic-response/app/))
 
 Requires Python 3.11 or newer (Linux, macOS and Windows).
 
@@ -79,7 +79,7 @@ python -m seismic_response.gui --build site/   # static copy: host it anywhere, 
 ```
 
 The browser version of each release is published to GitHub Pages at
-<https://earthscope-labs.github.io/seismic-response/>. A static copy has to be served over HTTP
+<https://earthscope-labs.github.io/seismic-response/app/>. A static copy has to be served over HTTP
 (for example `python -m http.server -d site/`); opening `index.html` from disk does not work.
 
 Load files by dropping them on the page (or fetch from an FDSN station web service), choose an FDSN Source

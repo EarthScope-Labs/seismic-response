@@ -48,6 +48,8 @@ code { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: .
 .topbar .logo { width: 28px; height: 28px; align-self: center; }
 .topbar h1 { margin: 0; font-size: 1.15rem; }
 .topbar .sub { color: var(--muted); font-size: .9rem; }
+.topbar .docs-link { color: var(--muted); font-size: .9rem; text-decoration: none; }
+.topbar .docs-link:hover { text-decoration: underline; }
 .spacer { flex: 1; }
 .badge {
   font-size: .78rem; padding: .15rem .55rem; border-radius: 999px;
