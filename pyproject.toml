@@ -1,0 +1,67 @@
+[build-system]
+requires = ["hatchling>=1.18"]
+build-backend = "hatchling.build"
+
+[project]
+name = "seismic-response"
+dynamic = ["version"]
+description = "Evaluate seismological instrument responses (StationXML, SEED RESP) with evalresp-compatible output"
+readme = "README.md"
+requires-python = ">=3.11"
+license = "Apache-2.0"
+license-files = ["LICENSE"]
+authors = [{ name = "EarthScope Consortium" }]
+keywords = ["seismology", "instrument response", "evalresp", "StationXML", "SEED", "RESP", "FDSN"]
+classifiers = [
+    "Development Status :: 3 - Alpha",
+    "Intended Audience :: Science/Research",
+    "License :: OSI Approved :: Apache Software License",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Programming Language :: Python :: 3.13",
+    "Programming Language :: Python :: 3.14",
+    "Topic :: Scientific/Engineering :: Physics",
+    "Operating System :: POSIX :: Linux",
+    "Operating System :: MacOS",
+    "Operating System :: Microsoft :: Windows",
+]
+# The core library is deliberately pure Python with no third-party
+# dependencies so that it runs unchanged under Pyodide (WebAssembly).
+dependencies = []
+
+[project.optional-dependencies]
+# Native desktop window for the GUI (otherwise the default browser is used).
+desktop = ["pywebview>=5"]
+test = ["pytest>=7"]
+dev = ["pytest>=7", "ruff", "build"]
+
+[project.scripts]
+seismic-response = "seismic_response.cli:main"
+# Drop-in replacement for the C evalresp command line.
+pyevalresp = "seismic_response.cli:evalresp_main"
+
+[tool.hatch.version]
+path = "src/seismic_response/__init__.py"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/seismic_response"]
+
+[tool.hatch.build.targets.sdist]
+include = ["/src", "/tests", "/tools", "/README.md", "/pyproject.toml"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+addopts = "-ra"
+
+[tool.ruff]
+line-length = 120
+target-version = "py311"
+
+[tool.ruff.lint]
+select = ["E", "F", "W", "B", "I"]
+ignore = ["E741", "B905"]  # short names such as `l` are fine in the numerical code
+
+[tool.ruff.lint.per-file-ignores]
+"tests/*" = ["E501", "B011"]
+"tools/*" = ["E501", "E402"]

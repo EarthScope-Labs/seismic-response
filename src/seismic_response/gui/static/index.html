@@ -1,0 +1,144 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Seismic Response</title>
+<link rel="icon" type="image/svg+xml" href="favicon.svg">
+<script>try{var t=localStorage.getItem('theme');if(t==='light'||t==='dark')document.documentElement.dataset.theme=t;}catch(e){}</script>
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+<header class="topbar">
+  <img class="logo" src="icon.svg" alt="" width="28" height="28">
+  <h1>Seismic Response</h1>
+  <span class="sub">instrument response viewer</span>
+  <span class="spacer"></span>
+  <span id="backend" class="badge" title="How responses are computed">starting…</span>
+  <button type="button" id="themeBtn" class="theme-btn" title="Switch between light and dark mode" aria-label="Switch between light and dark mode">◐</button>
+</header>
+
+<main class="layout">
+  <aside class="controls" aria-label="Controls">
+
+    <section>
+      <h2>1 · Response source</h2>
+      <div id="drop" class="drop" tabindex="0">
+        <span>Drop StationXML / RESP / SAC PZ files or</span>
+        <button type="button" id="openBtn" class="primary">Choose…</button>
+        <input type="file" id="fileInput" multiple hidden>
+      </div>
+      <button type="button" id="clearBtn" title="Remove all loaded response metadata" disabled>Clear loaded responses</button>
+      <details id="fdsn">
+        <summary>Fetch from an FDSN web service</summary>
+        <div class="grid2">
+          <label class="span2">Station service URL
+            <input id="svcUrl" list="svcList" value="https://service.earthscope.org/fdsnws/station/1/query" spellcheck="false">
+            <datalist id="svcList">
+              <option value="https://service.earthscope.org/fdsnws/station/1/query">
+              <option value="https://service.iris.edu/fdsnws/station/1/query">
+            </datalist>
+          </label>
+          <label>Network <input id="fNet" value="IU" spellcheck="false"></label>
+          <label>Station <input id="fSta" value="ANMO" spellcheck="false"></label>
+          <label>Location <input id="fLoc" value="00" spellcheck="false"></label>
+          <label>Channel <input id="fCha" value="BHZ" spellcheck="false"></label>
+        </div>
+        <button type="button" id="fetchBtn">Fetch response</button>
+        <p class="hint">Wildcards (<code>*</code>, <code>?</code>) are allowed. The service must permit
+          cross-origin requests.</p>
+      </details>
+      <p id="loadMsg" class="msg" role="status"></p>
+    </section>
+
+    <section>
+      <h2>2 · Channel &amp; time</h2>
+      <label>FDSN Source ID filter
+        <input id="sidFilter" placeholder="e.g. FDSN:IU_ANMO_*  (glob)" spellcheck="false">
+      </label>
+      <label>Source ID
+        <select id="sidSelect" size="6" aria-label="Source IDs"></select>
+      </label>
+      <label>Evaluation time (UTC)
+        <div class="inline">
+          <input id="timeInput" type="text" placeholder="YYYY-MM-DD hh:mm:ss" pattern="\d{4}-\d\d-\d\d([ T]\d\d:\d\d(:\d\d)?)?" maxlength="19" autocomplete="off" spellcheck="false">
+          <button type="button" id="nowBtn">Now</button>
+        </div>
+      </label>
+      <label>Epoch
+        <select id="epochSelect" aria-label="Epochs"></select>
+      </label>
+      <p id="epochMsg" class="hint"></p>
+    </section>
+
+    <section>
+      <h2>3 · Frequencies</h2>
+      <div class="grid3">
+        <label>Min (Hz) <input id="fMin" type="number" value="0.0001" step="any" min="0"></label>
+        <label>Max (Hz) <input id="fMax" type="number" value="50" step="any" min="0"></label>
+        <label>Points <input id="fN" type="number" value="300" min="1" max="20000" step="1"></label>
+      </div>
+      <div class="seg" role="radiogroup" aria-label="Frequency spacing">
+        <label><input type="radio" name="spacing" value="log" checked> Log</label>
+        <label><input type="radio" name="spacing" value="lin"> Linear</label>
+      </div>
+    </section>
+
+    <section>
+      <h2>4 · Options</h2>
+      <label>Output unit
+        <select id="unit">
+          <option value="def" selected>As documented in the response</option>
+          <option value="vel">Velocity (m/s)</option>
+          <option value="dis">Displacement (m)</option>
+          <option value="acc">Acceleration (m/s²)</option>
+        </select>
+      </label>
+      <label class="check"><input type="checkbox" id="perStage"> Show each stage separately</label>
+      <label class="check"><input type="checkbox" id="unwrap"> Unwrap phase</label>
+      <label class="check"><input type="checkbox" id="showRefs" checked> Show sensitivity &amp; Nyquist lines</label>
+      <label class="check"><input type="checkbox" id="showPoints"> Show measurement points</label>
+      <label class="check"><input type="checkbox" id="totalSens"> Use reported total sensitivity</label>
+      <label class="check"><input type="checkbox" id="estDelay"> Use estimated delay (asymmetric FIR)</label>
+      <label>Polynomial (B62) input value <input id="b62x" type="number" value="1" step="any"></label>
+    </section>
+  </aside>
+
+  <section class="results" aria-live="polite">
+    <div class="toolbar">
+      <h2 id="plotTitle">No response loaded</h2>
+      <span class="spacer"></span>
+      <div class="menu">
+        <button type="button" id="exportBtn" aria-haspopup="true" aria-expanded="false" disabled>Export ▾</button>
+        <div id="exportMenu" class="menu-list" hidden>
+          <button type="button" data-export="fap">Text: freq / amp / phase</button>
+          <button type="button" data-export="ap">Text: amplitude &amp; phase</button>
+          <button type="button" data-export="cs">Text: complex spectra</button>
+          <button type="button" data-export="svg">Plot as SVG</button>
+          <button type="button" data-export="png">Plot as PNG</button>
+        </div>
+      </div>
+    </div>
+
+    <div id="alerts"></div>
+    <div id="plotWrap" class="plotwrap">
+      <div id="placeholder" class="placeholder">
+        Load a StationXML, RESP or SAC PZ file (or fetch one from an FDSN service), then pick a channel.
+      </div>
+      <svg id="plot" role="img" aria-label="Bode plot of the instrument response" hidden></svg>
+      <div id="tip" class="tip" hidden></div>
+    </div>
+
+    <div id="summary" class="summary"></div>
+    <div class="tablewrap"><table id="stageTable" hidden>
+      <caption>Stages</caption>
+      <thead><tr><th class="usecol"><button type="button" id="useAll" class="mini" aria-label="Select or deselect all stages"></button></th><th>Stage</th><th>Type</th><th>Gain</th><th>Gain freq (Hz)</th><th>Units (in → out)</th><th>Rate (Hz)</th></tr></thead>
+      <tbody></tbody>
+    </table></div>
+  </section>
+</main>
+
+<footer class="foot">Computed with <code>seismic-response</code> <span id="version"></span></footer>
+<script src="app.js"></script>
+</body>
+</html>

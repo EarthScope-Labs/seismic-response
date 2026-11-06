@@ -1,0 +1,9 @@
+{
+  "name": "seismic-response-pyodide-smoke",
+  "private": true,
+  "type": "module",
+  "description": "Runs the package inside Pyodide (Python on WebAssembly) and checks results against the C evalresp program.",
+  "dependencies": {
+    "pyodide": "0.27.0"
+  }
+}
