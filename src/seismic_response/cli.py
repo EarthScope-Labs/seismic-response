@@ -56,8 +56,8 @@ USAGE: {prog} STALST CHALST YYYY DAY MINFREQ MAXFREQ NFREQ [options]
     -stdio               (take input from stdin, output to stdout)
     -use-estimated-delay (use estimated delay instead of correction applied
                           in computation of ASYM FIR response)
-    -il                  (interpolate List blockette output; not supported)
-    -ii                  (interpolate List blockette input; not supported)
+    -il                  (interpolate List blockette output)
+    -ii                  (same as -il)
     -unwrap              (unwrap phase if the output is AP)
     -ts                  (use total sensitivity from stage 0 instead of
                           computed)
@@ -399,8 +399,6 @@ def _run_evalresp(a: _Args) -> int:
     freqs = generate_frequencies(a.minfreq, a.maxfreq, a.nfreq, linear=a.spacing == "lin")
     sncls = _build_sncls(a)
     fmt = a.format or ("fap" if a.stdio else "ap")
-    if a.interpolate:
-        raise UnsupportedFeatureError("Interpolation of response list (blockette 55) is not supported (-il/-ii)")
 
     sources: List[Tuple[str, bytes]] = []
     if a.stdio:
@@ -440,6 +438,7 @@ def _run_evalresp(a: _Args) -> int:
                     use_total_sensitivity=a.total_sensitivity,
                     use_estimated_delay=a.estimated_delay,
                     b62_x=a.b62_x,
+                    interpolate_list=a.interpolate,
                 )
             except SeismicResponseError as exc:  # report and carry on with the next channel
                 log.error("%s", exc)

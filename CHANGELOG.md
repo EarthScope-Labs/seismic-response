@@ -1,9 +1,5 @@
 # Change Log
 
-## Unreleased
-
-- Add a help dialog to the GUI explaining the workflow and every option
-
 ## v0.1.0
 
 - Initial version

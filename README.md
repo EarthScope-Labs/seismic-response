@@ -64,9 +64,9 @@ cat station.xml | pyevalresp '*' 'BH?' 2020 5 0.01 10 50 -stdio -x
 ```
 
 Run `pyevalresp` without arguments for the full option list. Differences from the C program:
-messages go to stderr, a request matching no channel prints a warning, and `-il`/`-ii` are rejected
-(see *Limitations*). Also, `-u` defaults to `def` (the units documented in the response) rather than
-evalresp's `vel`; pass `-u vel` to get evalresp's behavior.
+messages go to stderr and a request matching no channel prints a warning. Also, `-u` defaults to `def`
+(the units documented in the response) rather than evalresp's `vel`; pass `-u vel` to get evalresp's
+behavior.
 
 `seismic-response` is the umbrella command: `seismic-response info FILE [-s]` lists channels and stages,
 `seismic-response evalresp ...` is `pyevalresp`, and `seismic-response gui [FILE ...]` starts the GUI.
@@ -98,8 +98,9 @@ The numerical code is a port of evalresp's own logic (stage consistency checks, 
 handling, FIR/IIR/pole-zero evaluation, unit conversion, phase unwrapping) rather than a re-derivation.
 It is checked against a built evalresp 5.0.1 in two ways:
 
-* **Golden tests** (`tests/test_golden.py`, run everywhere): 167 results captured from the C program for
-  real and synthetic responses over a matrix of options, matched to within the 7 digits it prints.
+* **Golden tests** (`tests/test_golden.py`, run everywhere): 169 results captured from the C program for
+  real and synthetic responses over a matrix of options, matched to within the 7 digits it prints
+  (the `-il` results come from an evalresp build that includes the spline fixes).
 * **Live comparison** (`tools/compare_evalresp.py BINARY FILES...`, needs a built C evalresp): 2,509
   complex-spectrum comparisons over every response in evalresp's own test data plus the synthetic
   fixtures, and 460 FAP/AP text comparisons (`--formats`, which includes phase unwrapping), with no
@@ -138,9 +139,15 @@ inputs, `-ts`, `-use-estimated-delay` and stage ranges.
 * **Polynomial responses (blockette 62)** are implemented from evalresp's source, with unit tests of the
   formula, but could not be compared against the C program: the evalresp build used for validation crashes
   on files containing them.
-* **`-il`/`-ii`** (spline interpolation of response-list output) is not implemented and is rejected
-  rather than silently ignored. Without it, evalresp's default behavior (report at the listed
-  frequencies) is reproduced.
+* **Response-list interpolation** (`-il`, or `interpolate_list=True`) resamples a blockette 55 response
+  at the requested frequencies with a natural cubic spline in log10(frequency), interpolating
+  log10(amplitude) and the unwrapped phase. If any listed frequency or amplitude, or any requested
+  frequency, is not positive it falls back to linear space with a warning. Requested frequencies outside
+  the list's range are dropped with a warning, and the list frequencies must be strictly increasing.
+  `-ii` is accepted as an alias. This matches evalresp releases that include the spline fixes; evalresp
+  5.0.1 and earlier give different values for requested frequencies that are not listed, because they
+  swap two spline coefficients (the result is not smooth on unevenly spaced frequencies) and interpolate in
+  linear space, where steep roll-offs can overshoot or go negative.
 * **RESP dictionary references** (blockette 60 and the blockette 4x lookups) are not supported and raise
   `ResponseParseError`.
 * Analog (non-Z) coefficient filters are rejected, as in evalresp.

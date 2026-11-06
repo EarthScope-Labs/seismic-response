@@ -123,7 +123,6 @@ def test_stationxml_input_with_x_flag_and_autodetect(run):
         ([*BASE, "-f", ANMO, "-s", "sideways"], 3),
         ([*BASE, "-f", ANMO, "-r", "xml"], 3),
         ([*BASE, "-f", ANMO, "-t", "noon"], 3),
-        ([*BASE, "-f", ANMO, "-il"], 3),  # unsupported here
         ([*BASE, "-f", "/no/such/file"], 2),  # I/O error
         (["ANMO", "BHZ", "2000", "100", "0", "10", "3", "-f", ANMO], 7),  # zero frequency on a log axis
     ],

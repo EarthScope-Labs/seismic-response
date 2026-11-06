@@ -297,9 +297,72 @@ def test_phase_unwrapping():
     assert sr.phase_degrees([0j]) == [0.0]  # the 1e-200 guard keeps atan2 defined
 
 
-def test_interpolating_list_output_is_reported_as_unsupported(anmo):
-    with pytest.raises(sr.UnsupportedFeatureError):
-        anmo[0].evaluate([1.0], interpolate_list=True)
+def _list_channel(freqs, amps, phases):
+    c = chan(Stage(1, "M/S - Velocity", COUNTS, ResponseList(freqs, amps, phases), gain=Gain(1.0, 1.0)))
+    c.stages.append(Stage(0, None, None, None, gain=Gain(1.0, 1.0)))
+    return c
+
+
+def test_list_interpolation_reproduces_knots_and_clips_to_the_list_range():
+    freqs = [1.0, 2.0, 4.0, 8.0]
+    c = _list_channel(freqs, [1.0, 2.0, 3.0, 4.0], [0.0, 10.0, 20.0, 30.0])
+    res = c.evaluate([0.5, 2.0, 8.0, 16.0], unit="def", interpolate_list=True)
+    assert res.frequencies == [2.0, 8.0]
+    assert abs(res.values[0]) == pytest.approx(2.0)
+    assert abs(res.values[1]) == pytest.approx(4.0)
+    assert len(res.info.warnings) == 2
+    # Without interpolation the listed frequencies are reported
+    assert c.evaluate([3.0], unit="def").frequencies == freqs
+
+
+def test_list_interpolation_is_exact_for_power_law_data_on_uneven_knots():
+    freqs = [1.0, 1.5, 4.0, 5.0, 8.0]
+    c = _list_channel(freqs, [3.0 * f**-1.5 for f in freqs], [40.0 * math.log10(f) for f in freqs])
+    req = [1.2, 2.0, 4.5, 7.0]
+    res = c.evaluate(req, unit="def", interpolate_list=True)
+    assert [abs(v) for v in res.values] == pytest.approx([3.0 * f**-1.5 for f in req])
+    assert sr.phase_degrees(res.values) == pytest.approx([40.0 * math.log10(f) for f in req])
+
+
+def test_cubic_spline_has_continuous_slope_on_uneven_knots():
+    from seismic_response.evaluate import _cubic_spline
+
+    t = [0.0, 0.1, 0.5, 0.6, 1.5, 3.0]
+    y = [math.sin(x) for x in t]
+    eps = 1e-6
+    for k in t[1:-1]:
+        left, right = _cubic_spline(t, y, [k - eps, k]), _cubic_spline(t, y, [k, k + eps])
+        assert (left[1] - left[0]) / eps == pytest.approx((right[1] - right[0]) / eps, rel=1e-3)
+    assert _cubic_spline(t, y, t) == pytest.approx(y)
+
+
+def test_list_interpolation_falls_back_to_linear_space_for_non_positive_values():
+    c = _list_channel([1.0, 2.0, 3.0, 4.0], [0.0, 1.0, 2.0, 3.0], [0.0, 0.0, 0.0, 0.0])
+    res = c.evaluate([1.5, 3.5], unit="def", interpolate_list=True)
+    assert any("linear space" in w for w in res.info.warnings)
+    assert [abs(v) for v in res.values] == pytest.approx([0.5, 2.5])
+
+
+def test_list_interpolation_wraps_phase_and_keeps_amplitude_positive():
+    freqs = [1.0, 2.0, 3.0, 4.0]
+    c = _list_channel(freqs, [0.01, 1.0, 1.0, 0.01], [170.0, -170.0, -150.0, -130.0])
+    res = c.evaluate([1.5, 2.5, 3.5], unit="def", interpolate_list=True)
+    assert all(abs(v) > 0 for v in res.values)
+    assert all(-180.0 <= p <= 180.0 for p in sr.phase_degrees(res.values))
+
+
+def test_list_interpolation_rejects_unusable_input():
+    c = _list_channel([1.0, 1.0, 2.0], [1.0, 1.0, 1.0], [0.0, 0.0, 0.0])
+    with pytest.raises(sr.ResponseValueError, match="strictly increasing"):
+        c.evaluate([1.5], interpolate_list=True)
+    c = _list_channel([1.0, 2.0], [1.0, 1.0], [0.0, 0.0])
+    with pytest.raises(sr.ResponseValueError, match="within requested"):
+        c.evaluate([5.0], interpolate_list=True)
+
+
+def test_list_interpolation_leaves_other_responses_unchanged(anmo):
+    f = [0.5, 2.0]
+    assert anmo[0].evaluate(f, interpolate_list=True).values == anmo[0].evaluate(f).values
 
 
 def test_default_unit_is_the_documented_unit(anmo):

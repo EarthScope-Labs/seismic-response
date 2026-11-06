@@ -16,6 +16,8 @@ from pathlib import Path
 
 import compare_evalresp as ce
 
+import seismic_response as sr
+
 
 def main():
     binary, data = sys.argv[1], Path(sys.argv[2])
@@ -29,7 +31,10 @@ def main():
             for index, chan in enumerate(source.channels):
                 end = chan.end_time or (chan.start_time + timedelta(days=400))
                 when = (chan.start_time + min((end - chan.start_time) / 2, timedelta(days=60))).replace(microsecond=0)
+                has_list = any(isinstance(s.filter, sr.ResponseList) for s in chan.stages)
                 for case in ce.CASES:
+                    if case.get("il") and not has_list:
+                        continue
                     rows, err = ce.run_c(binary, source, index, chan, when, case, work)
                     if rows is None:
                         continue  # C rejected it (e.g. stage range with no matching stage)

@@ -19,14 +19,15 @@ Frequency response conventions
 
 from __future__ import annotations
 
+import bisect
 import copy
 import logging
 import math
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from typing import Dict, Iterable, List, Optional, Sequence, Tuple
 
 from . import units as U
-from .errors import ResponseValueError, UnsupportedFeatureError
+from .errors import ResponseValueError
 from .model import (
     FIR,
     LAPLACE_HERTZ,
@@ -722,6 +723,121 @@ def _convert_to_units(inp: int, out: int, value: complex, w: float) -> complex:
 # --------------------------------------------------------------------------- public API
 
 
+# --------------------------------------------------------------------------- response-list interpolation
+
+
+def _cubic_spline(t: Sequence[float], y: Sequence[float], xs: Sequence[float]) -> List[float]:
+    """Natural cubic spline (zero end second derivatives) through ``(t, y)``, evaluated at ``xs``."""
+    n = len(t)
+    h = [t[i + 1] - t[i] for i in range(n - 1)]
+    ypp = [0.0] * n
+    if n > 2:
+        # Interior rows i = 1..n-2 as a tridiagonal system (Thomas algorithm), index k = i - 1
+        m = n - 2
+        lower = [h[k] / 6.0 for k in range(m)]
+        diag = [(t[k + 2] - t[k]) / 3.0 for k in range(m)]
+        upper = [h[k + 1] / 6.0 for k in range(m)]
+        rhs = [(y[k + 2] - y[k + 1]) / h[k + 1] - (y[k + 1] - y[k]) / h[k] for k in range(m)]
+        for k in range(1, m):
+            w = lower[k] / diag[k - 1]
+            diag[k] -= w * upper[k - 1]
+            rhs[k] -= w * rhs[k - 1]
+        ypp[m] = rhs[m - 1] / diag[m - 1]
+        for k in range(m - 2, -1, -1):
+            ypp[k + 1] = (rhs[k] - upper[k] * ypp[k + 2]) / diag[k]
+
+    out: List[float] = []
+    for x in xs:
+        i = min(max(bisect.bisect_right(t, x) - 1, 0), n - 2)
+        dt = x - t[i]
+        out.append(
+            y[i]
+            + dt
+            * (
+                (y[i + 1] - y[i]) / h[i]
+                - (ypp[i + 1] / 6.0 + ypp[i] / 3.0) * h[i]
+                + dt * (0.5 * ypp[i] + dt * (ypp[i + 1] - ypp[i]) / (6.0 * h[i]))
+            )
+        )
+    return out
+
+
+def _interpolate_list(
+    rl: ResponseList, requested: Sequence[float], work: _Work, ident: str
+) -> Tuple[List[float], ResponseList]:
+    """Resample a response list at the requested frequencies that lie within its range.
+
+    Amplitudes and unwrapped phases are splined separately against log10(frequency), the
+    amplitudes as log10(amplitude), and phases are returned wrapped.  If any listed
+    frequency or amplitude, or any requested frequency, is not positive, the splines run
+    in linear space instead and non-positive amplitudes are replaced by a tenth of the
+    smallest listed amplitude.
+    """
+    freqs = rl.frequencies
+    n = len(freqs)
+    if n < 2:
+        raise ResponseValueError(f"{ident}: response list interpolation needs at least 2 frequencies")
+    if any(b <= a for a, b in zip(freqs, freqs[1:])):
+        raise ResponseValueError(f"{ident}: response list frequencies must be strictly increasing to interpolate")
+
+    lo, hi = freqs[0], freqs[-1]
+    used = [f for f in requested if lo <= f <= hi]
+    below = sum(1 for f in requested if f < lo)
+    above = sum(1 for f in requested if f > hi)
+    if not used:
+        raise ResponseValueError(f"{ident}: no blockette 55 values within requested frequency range")
+    if below:
+        _warn(work, f"{ident}: dropped {below} values from start of requested range, outside blockette 55")
+    if above:
+        _warn(work, f"{ident}: dropped {above} values from end of requested range, outside blockette 55")
+
+    use_log = all(f > 0.0 for f in freqs) and all(a > 0.0 for a in rl.amplitudes) and all(f > 0.0 for f in used)
+    if use_log:
+        knots = [math.log10(f) for f in freqs]
+        points = [math.log10(f) for f in used]
+        amps = [10.0**v for v in _cubic_spline(knots, [math.log10(a) for a in rl.amplitudes], points)]
+    else:
+        _warn(
+            work,
+            f"{ident}: response list has non-positive frequency or amplitude values; "
+            "interpolating in linear space (results may be inaccurate)",
+        )
+        knots, points = list(freqs), used
+        amps = _cubic_spline(knots, rl.amplitudes, points)
+        floor = min(rl.amplitudes)
+        if floor > 0.0:
+            amps = [a if a > 0.0 else floor / 10.0 for a in amps]
+
+    unwrapped: List[float] = []
+    prev = added = 0.0
+    any_unwrapped = False
+    for ph in rl.phases:
+        new, added = unwrap_phase(ph, prev, 360.0, added)
+        unwrapped.append(new)
+        any_unwrapped = any_unwrapped or added != 0.0
+        prev = new
+    phases = _cubic_spline(knots, unwrapped, points)
+
+    if any_unwrapped:
+        offset = 0.0
+        while phases[0] + offset > 180.0:
+            offset -= 360.0
+        while phases[0] + offset < -180.0:
+            offset += 360.0
+        added = offset
+        for i, ph in enumerate(phases):
+            ph += added
+            if ph > 180.0:
+                added -= 360.0
+                ph -= 360.0
+            elif ph < -180.0:
+                added += 360.0
+                ph += 360.0
+            phases[i] = ph
+
+    return used, ResponseList(used, amps, phases)
+
+
 def evaluate(
     channel: Channel,
     frequencies: Sequence[float],
@@ -764,10 +880,11 @@ def evaluate(
     exclude_stages:
         Stage numbers to leave out of the calculation (in addition to any
         ``stages`` range).
+    interpolate_list:
+        For a response-list (blockette 55) response, spline-interpolate the list at the
+        requested frequencies (those outside the list's range are dropped) instead of
+        reporting the listed frequencies.
     """
-    if interpolate_list:
-        raise UnsupportedFeatureError("Interpolation of response list (blockette 55) output is not supported")
-
     opts = _Options(unit, stages, use_total_sensitivity, use_estimated_delay, b62_x, exclude_stages)
     ident = channel.nslc
     # evalresp reports a zero amplitude (with a warning) here; an error is clearer than a flat curve
@@ -783,7 +900,11 @@ def evaluate(
     freqs = list(frequencies)
     first = work.stages[0]
     if first.kind == _LIST:
-        freqs = list(first.filter.frequencies)
+        if interpolate_list:
+            freqs, listed = _interpolate_list(first.filter, freqs, work, ident)
+            selected = [replace(s, filter=listed) if s is first else s for s in selected]
+        else:
+            freqs = list(first.filter.frequencies)
     if not freqs:
         raise ResponseValueError("No frequencies requested")
 

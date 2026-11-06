@@ -15,7 +15,7 @@ GOLDEN = json.loads((DATA / "golden" / "golden.json").read_text(encoding="utf-8"
 def _id(entry):
     case = entry["case"]
     opts = [case["unit"], "x".join(map(str, case["freqs"][:3]))]
-    opts += [k for k in ("ts", "estdelay") if case.get(k)]
+    opts += [k for k in ("ts", "estdelay", "il") if case.get(k)]
     if case.get("stages"):
         opts.append("stages%s-%s" % tuple(case["stages"]))
     return f"{Path(entry['fixture']).stem}:{entry['nslc']}@{entry['time'][:10]}:{'/'.join(opts)}"
@@ -58,6 +58,7 @@ def test_matches_c_evalresp(entry):
         use_total_sensitivity=case.get("ts", False),
         use_estimated_delay=case.get("estdelay", False),
         b62_x=2.0,
+        interpolate_list=case.get("il", False),
     )
     _compare(entry["rows"], res.values, res.frequencies)
 

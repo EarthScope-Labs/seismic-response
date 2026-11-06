@@ -31,6 +31,7 @@ CASES = [
     dict(unit="vel", freqs=(0.001, 40, 25, "log"), stages=(1, None)),
     dict(unit="vel", freqs=(0.001, 40, 25, "log"), stages=(2, 3)),
     dict(unit="vel", freqs=(0.001, 40, 25, "log"), stages=(1, 1)),
+    dict(unit="vel", freqs=(0.005, 20, 30, "log"), il=True),  # response lists only
 ]
 
 
@@ -45,6 +46,8 @@ def _run_c_once(binary, file, chan, when, case, workdir):
         cmd.append("-ts")
     if case.get("estdelay"):
         cmd.append("-use-estimated-delay")
+    if case.get("il"):
+        cmd.append("-il")
     if case.get("stages"):
         a, b = case["stages"]
         cmd += ["-stage", str(a)] + ([str(b)] if b is not None else [])
@@ -164,7 +167,8 @@ def run_py(channels, chan, when, case):
         stages = (stages[0], stages[0])
     res = sr.evaluate(chan, freqs, unit=case["unit"], stages=stages,
                       use_total_sensitivity=case.get("ts", False),
-                      use_estimated_delay=case.get("estdelay", False), b62_x=2.0)
+                      use_estimated_delay=case.get("estdelay", False), b62_x=2.0,
+                      interpolate_list=case.get("il", False))
     return [(f, v.real, v.imag) for f, v in zip(res.frequencies, res.values)], ""
 
 
