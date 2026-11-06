@@ -78,6 +78,10 @@ seismic-response gui --app                     # native window (needs the [deskt
 python -m seismic_response.gui --build site/   # static copy: host it anywhere, no Python server needed
 ```
 
+The browser version of each release is published to GitHub Pages at
+<https://earthscope-labs.github.io/seismic-response/>. A static copy has to be served over HTTP
+(for example `python -m http.server -d site/`); opening `index.html` from disk does not work.
+
 Load files by dropping them on the page (or fetch from an FDSN station web service), choose an FDSN Source
 ID and a point in time (the epoch containing it is chosen as in evalresp), then set the frequency range,
 output unit and options, and tick the stages to include in the stage table. The plot shows amplitude and phase with a hover read-out; individual
