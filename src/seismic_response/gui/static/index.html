@@ -31,6 +31,12 @@
         <input type="file" id="fileInput" multiple hidden>
       </div>
       <button type="button" id="clearBtn" title="Remove all loaded response metadata" disabled>Clear loaded responses</button>
+      <label>Response file URL
+        <div class="inline">
+          <input id="urlInput" type="url" placeholder="https://…" spellcheck="false" autocomplete="off">
+          <button type="button" id="urlBtn">Load</button>
+        </div>
+      </label>
       <details id="fdsn">
         <summary>Fetch from an FDSN web service</summary>
         <div class="grid2">
@@ -158,6 +164,8 @@
     <dl>
       <dt>1 · Response source</dt>
       <dd>Drop or choose one or more files; they accumulate until you press <em>Clear loaded responses</em>.
+        <em>Response file URL</em> loads a StationXML, RESP or SAC PZ file from a URL, like a dropped file; the
+        server must allow cross-origin requests.
         <em>Fetch from an FDSN web service</em> queries a station service for network, station, location and
         channel (<code>*</code> and <code>?</code> wildcards allowed; an empty location means <code>--</code>).
         If an evaluation time is set the query is limited to that time. The service must allow cross-origin
@@ -221,6 +229,16 @@
     <p>Text formats follow evalresp: <em>freq / amp / phase</em> (one file), <em>amplitude &amp; phase</em>
       (the AMP and PHASE listings in one file) and <em>complex spectra</em> (real and imaginary parts). The
       plot exports as SVG or PNG as displayed.</p>
+
+    <h3>Page parameters</h3>
+    <dl>
+      <dt><code>url</code></dt>
+      <dd>Loads the response file at this URL when the page opens, as if entered in <em>Response file URL</em>.
+        Repeat it to load several (<code>?url=A&amp;url=B</code>). A relative URL is taken relative to the page.
+        Percent-encode a URL that contains <code>&amp;</code>, <code>?</code>, <code>#</code> or <code>+</code>,
+        such as an FDSN station query. The server must allow cross-origin requests. Example:
+        <code>?url=https%3A%2F%2Fservice.earthscope.org%2Ffdsnws%2Fstation%2F1%2Fquery%3Fnet%3DIU%26sta%3DANMO%26loc%3D00%26cha%3DBHZ%26level%3Dresponse</code></dd>
+    </dl>
 
     <p class="hint">Full documentation:
       <a href="https://earthscope-labs.github.io/seismic-response/" target="_blank" rel="noopener">earthscope-labs.github.io/seismic-response</a></p>

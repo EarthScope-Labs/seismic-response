@@ -83,10 +83,15 @@ The browser version of each release is published to GitHub Pages at
 <https://earthscope-labs.github.io/seismic-response/app/>. A static copy has to be served over HTTP
 (for example `python -m http.server -d site/`); opening `index.html` from disk does not work.
 
-Load files by dropping them on the page (or fetch from an FDSN station web service), choose an FDSN Source
-ID and a point in time (the epoch containing it is chosen as in evalresp), then set the frequency range,
-output unit and options, and tick the stages to include in the stage table. The plot shows amplitude and phase with a hover read-out; individual
-stages can be overlaid; results export as evalresp text (FAP, AP, complex), SVG or PNG.
+Load files by dropping them on the page, enter a file URL, or fetch from an FDSN station web service. Choose
+an FDSN Source ID and a point in time (the epoch containing it is chosen as in evalresp), then set the
+frequency range, output unit and options, and tick the stages to include in the stage table. The plot shows
+amplitude and phase with a hover read-out; individual stages can be overlaid; results export as evalresp text
+(FAP, AP, complex), SVG or PNG.
+
+A link can open the page with files already loaded using the `url` parameter (repeatable, percent-encoded),
+for example `.../app/?url=https%3A%2F%2Fexample.org%2Fresponse.xml`. The file server must allow cross-origin
+requests.
 
 The page talks to the same Python through a small JSON API (`seismic_response.web_api`). With the local
 server that is plain HTTP on the loopback interface (requests with a foreign `Host` or `Origin` are

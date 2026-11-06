@@ -134,19 +134,54 @@ async function decodeText(file) {
 
 /* ------------------------------------------------------------------ loading responses */
 
-async function loadFiles(files) {
+/** Load each source ({ name, text(): Promise<string> }) into the backend and report the outcome. */
+async function loadSources(sources) {
   const msg = $('loadMsg');
   let added = 0;
   const problems = [];
-  for (const f of files) {
+  for (const s of sources) {
     try {
-      const res = await backend.call('load', f.name, await decodeText(f));
-      if (res.ok) added += res.added; else problems.push(f.name + ': ' + res.error);
-    } catch (e) { problems.push(f.name + ': ' + e.message); }
+      const res = await backend.call('load', s.name, await s.text());
+      if (res.ok) added += res.added; else problems.push(s.name + ': ' + res.error);
+    } catch (e) { problems.push(s.name + ': ' + e.message); }
   }
   if (problems.length) setMsg(msg, problems.join('\n'), 'error');
   else setMsg(msg, `Loaded ${added} channel epoch${added === 1 ? '' : 's'}.`, 'ok');
   if (added) await refreshChannels(true);
+}
+
+function loadFiles(files) {
+  return loadSources(files.map((f) => ({ name: f.name, text: () => decodeText(f) })));
+}
+
+/** Fetch response files from URLs (relative URLs resolve against the page). */
+function loadUrls(urls) {
+  const sources = [];
+  const bad = [];
+  for (const u of urls) {
+    let href;
+    try { href = new URL(u, location.href).href; } catch (e) { bad.push(u + ': not a valid URL'); continue; }
+    sources.push({
+      name: href,
+      text: async () => {
+        let r;
+        try { r = await fetch(href); }
+        catch (e) { throw new Error('request failed (the server may not allow cross-origin access)'); }
+        if (!r.ok) throw new Error('HTTP ' + r.status);
+        return decodeText(r);
+      },
+    });
+  }
+  if (!sources.length) { setMsg($('loadMsg'), bad.join('\n'), 'error'); return Promise.resolve(); }
+  setMsg($('loadMsg'), 'Fetching…');
+  return loadSources(sources).then(() => {
+    if (bad.length) setMsg($('loadMsg'), $('loadMsg').textContent + '\n' + bad.join('\n'), 'error');
+  });
+}
+
+function loadUrlField() {
+  const url = $('urlInput').value.trim();
+  if (url) loadUrls([url]);
 }
 
 async function clearResponses() {
@@ -234,7 +269,7 @@ function renderSidList(keepOrPickFirst) {
   sel.innerHTML = '';
   for (const g of groups) {
     const o = document.createElement('option');
-    o.value = g.key; o.textContent = g.label; o.title = g.origin;
+    o.value = g.key; o.textContent = g.label; o.dataset.tip = g.origin;
     sel.appendChild(o);
   }
   if (!groups.length) { S.key = null; renderEpochs(); updateAll(); return; }
@@ -398,7 +433,7 @@ function updateAll() {
   const title = $('plotTitle');
   const group = chan && S.key ? groupOf(S.key) : null;
   title.textContent = chan ? (group ? group.label : chan.source_id) : 'No response loaded';
-  title.title = chan ? chan.origin : '';
+  if (chan && chan.origin) title.dataset.tip = chan.origin; else delete title.dataset.tip;
   if (chan) {
     const range = document.createElement('span');
     range.className = 'title-range';
@@ -752,7 +787,39 @@ function currentTheme() {
   return t || (matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light');
 }
 
+/** Tooltips for elements with a data-tip attribute; shown after TIP_DELAY_MS (native titles wait far longer). */
+const TIP_DELAY_MS = 80;
+
+function wireTips() {
+  const tip = document.createElement('div');
+  tip.className = 'hint-tip';
+  tip.hidden = true;
+  tip.setAttribute('role', 'tooltip');
+  document.body.appendChild(tip);
+  let timer = 0, current = null, x = 0, y = 0;
+  const hide = () => { clearTimeout(timer); tip.hidden = true; };
+  const place = () => {
+    const r = tip.getBoundingClientRect();
+    tip.style.left = Math.max(4, Math.min(x + 12, window.innerWidth - r.width - 4)) + 'px';
+    tip.style.top = Math.max(4, Math.min(y + 18, window.innerHeight - r.height - 4)) + 'px';
+  };
+  document.addEventListener('mouseover', (e) => {
+    const target = e.target.closest ? e.target.closest('[data-tip]') : null;
+    if (target === current) return;
+    current = target;
+    hide();
+    if (!target) return;
+    timer = setTimeout(() => { tip.textContent = target.dataset.tip; tip.hidden = false; place(); }, TIP_DELAY_MS);
+  });
+  document.addEventListener('mousemove', (e) => { x = e.clientX; y = e.clientY; if (!tip.hidden) place(); });
+  document.addEventListener('mouseout', (e) => { if (!e.relatedTarget) { current = null; hide(); } });
+  document.addEventListener('mousedown', hide);
+  document.addEventListener('keydown', hide);
+  window.addEventListener('scroll', hide, true);
+}
+
 function wire() {
+  wireTips();
   $('useAll').onclick = () => {
     const chan = S.channels.find((c) => c.id === S.chanId);
     if (!chan) return;
@@ -783,6 +850,8 @@ function wire() {
   drop.addEventListener('drop', (e) => loadFiles([...e.dataTransfer.files]));
   window.addEventListener('dragover', (e) => e.preventDefault());
   window.addEventListener('drop', (e) => { e.preventDefault(); if (!drop.contains(e.target)) loadFiles([...e.dataTransfer.files]); });
+  $('urlBtn').onclick = loadUrlField;
+  $('urlInput').addEventListener('keydown', (e) => { if (e.key === 'Enter') loadUrlField(); });
   $('fetchBtn').onclick = fetchFdsn;
   $('clearBtn').onclick = clearResponses;
 
@@ -820,11 +889,13 @@ async function main() {
     setBadge(backend.kind === 'http' ? 'local Python' : 'Python in browser (Pyodide)', true);
     try { $('version').textContent = 'v' + (await backend.call('version')).version; } catch (e) { /* optional */ }
     await refreshChannels(true);
+    const urls = new URLSearchParams(location.search).getAll('url').map((u) => u.trim()).filter(Boolean);
+    if (urls.length) { $('urlInput').value = urls[0]; await loadUrls(urls); }
   } catch (e) {
     setBadge('backend failed');
     showAlert('error', 'Could not start the computation backend: ' + e.message);
   }
 }
 
-window.__seismic = { S, backend, loadFiles, refreshChannels, standaloneSvg }; // handy for debugging and tests
+window.__seismic = { S, backend, loadFiles, loadUrls, refreshChannels, standaloneSvg }; // handy for debugging and tests
 main();

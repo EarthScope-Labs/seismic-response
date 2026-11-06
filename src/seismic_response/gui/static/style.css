@@ -131,6 +131,12 @@ details > button { margin-top: .6rem; }
   border-radius: 6px; padding: .3rem .5rem; font-size: .78rem; box-shadow: 0 4px 14px rgb(0 0 0 / .2);
   font-variant-numeric: tabular-nums; white-space: nowrap;
 }
+.hint-tip {
+  position: fixed; z-index: 50; max-width: min(32rem, calc(100vw - 1rem)); pointer-events: none;
+  background: var(--surface); color: var(--text); border: 1px solid var(--border); border-radius: 6px;
+  padding: .3rem .5rem; font-size: .78rem; box-shadow: 0 4px 14px rgb(0 0 0 / .2); overflow-wrap: anywhere;
+}
+.hint-tip[hidden] { display: none; }
 
 .summary { font-size: .85rem; color: var(--muted); margin: .4rem 0; }
 .summary b { color: var(--text); font-weight: 600; }
