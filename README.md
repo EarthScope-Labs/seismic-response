@@ -111,8 +111,13 @@ FIR (including continuation blockettes and delay correction), IIR coefficients, 
 stages, sensitivity-frequency renormalization, `dis`/`vel`/`acc`/`def` conversion including nm/mm/cm
 inputs, `-ts`, `-use-estimated-delay` and stage ranges.
 
-Deliberate differences (where this package is more exact than evalresp):
+Deliberate differences from evalresp:
 
+* **Default output unit.** With no unit requested, responses are evaluated in the units documented in the
+  response (`def`): counts per m/s for a velocity sensor, counts per m/s² for an accelerometer, and so on.
+  This applies to the library (`evaluate()`), `pyevalresp`, the web API and the GUI. evalresp defaults to
+  `vel` and converts every response to velocity unless `-u def` is given, which is an error for any response
+  that cannot be converted to velocity. For evalresp's behavior, pass  `-u vel` (or `unit="vel"`).
 * **StationXML precision.** StationXML is read at full precision. evalresp converts it to RESP text first,
   rounding every coefficient to six significant digits, which can move values near deep stopband nulls
   (for example a FIR response at Nyquist). Where it matters, this package is the more exact of the two.
@@ -138,6 +143,21 @@ Deliberate differences (where this package is more exact than evalresp):
 * **RESP dictionary references** (blockette 60 and the blockette 4x lookups) are not supported and raise
   `ResponseParseError`.
 * Analog (non-Z) coefficient filters are rejected, as in evalresp.
+
+## References
+
+* **SEED**: [SEED Reference Manual, SEED Format Version 2.4](https://www.fdsn.org/pdf/SEEDManual_V2.4.pdf)
+  (FDSN), which defines the response blockettes that RESP files carry, and the
+  [FDSN publications](https://www.fdsn.org/publications/) page.
+* **evalresp**: the [evalresp repository](https://github.com/EarthScope/evalresp) and the
+  [5.0.1 release](https://github.com/EarthScope/evalresp/releases/tag/v5.0.1) this package is validated against.
+* **SAC poles and zeros**: Goldstein, P., Dodge, D., Firpo, M., and Minner, L. (2003). SAC2000: Signal
+  processing and analysis tools for seismologists and engineers. In W. H. K. Lee, H. Kanamori, P. C. Jennings,
+  and C. Kisslinger (Eds.), *International Handbook of Earthquake and Engineering Seismology*, Part B, ch. 85.5,
+  pp. 1613–1614. Academic Press, London.
+  [doi:10.1016/S0074-6142(03)80284-X](https://doi.org/10.1016/S0074-6142(03)80284-X)
+* **Related FDSN standards** used by this package: [StationXML](https://docs.fdsn.org/projects/stationxml/en/latest/)
+  and [Source Identifiers](https://docs.fdsn.org/projects/source-identifiers/en/latest/).
 
 ## Development
 
