@@ -7,7 +7,7 @@
  */
 'use strict';
 
-const PYODIDE_URL = 'https://cdn.jsdelivr.net/pyodide/v0.27.0/full/pyodide.js';
+const PYODIDE_URL = 'https://cdn.jsdelivr.net/pyodide/v314.0.7/full/pyodide.js';
 const $ = (id) => document.getElementById(id);
 
 /* ------------------------------------------------------------------ backend */

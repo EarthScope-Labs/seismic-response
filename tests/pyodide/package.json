@@ -4,6 +4,6 @@
   "type": "module",
   "description": "Runs the package inside Pyodide (Python on WebAssembly) and checks results against the C evalresp program.",
   "dependencies": {
-    "pyodide": "0.27.0"
+    "pyodide": "314.0.7"
   }
 }
