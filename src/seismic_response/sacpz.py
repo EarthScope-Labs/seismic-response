@@ -196,6 +196,7 @@ def _build_channel(b: _Block, origin: str, where: str, line_no: int) -> Channel:
         end_time=_time(note.get("END"), where, is_end=True),
         stages=[stage],
         origin=origin,
+        instrument=note.get("INSTTYPE", ""),
     )
 
 

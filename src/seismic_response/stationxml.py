@@ -162,6 +162,9 @@ def _build_channel(elem: ET.Element, network: str, station: str, origin: str) ->
         end_time=_date(elem.get("endDate")),
         origin=origin,
     )
+    sensor = _child(elem, "Sensor")
+    if sensor is not None:
+        chan.instrument = _text(sensor, "Description", "") or _text(sensor, "Type", "")
     response = _child(elem, "Response")
     if response is None:
         return chan  # channel without a response; evaluating it will report that

@@ -38,6 +38,7 @@ def test_load_list_and_select():
     first = chans[0]
     assert first["source_id"] == "FDSN:IU_ANMO_00_B_H_Z" and first["end"] == "2000-10-19T16:00:00Z"
     assert chans[1]["end"] is None
+    assert first["instrument"] == ""
     assert first["stages"][0]["sequence"] == 1 and first["stages"][0]["gain"] == 2061.68
     assert json.loads(web_api.select("FDSN:IU_ANMO_*", "1999-06-01T00:00:00Z")) == [0]
     assert json.loads(web_api.select("FDSN:IU_ANMO_*", "2005-01-01T00:00:00Z")) == [1]

@@ -154,6 +154,7 @@ details > button { margin-top: .6rem; }
   position: fixed; z-index: 50; max-width: min(32rem, calc(100vw - 1rem)); pointer-events: none;
   background: var(--surface); color: var(--text); border: 1px solid var(--border); border-radius: 6px;
   padding: .3rem .5rem; font-size: .78rem; box-shadow: 0 4px 14px rgb(0 0 0 / .2); overflow-wrap: anywhere;
+  white-space: pre-line;
 }
 .hint-tip[hidden] { display: none; }
 

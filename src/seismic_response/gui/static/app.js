@@ -282,6 +282,12 @@ function plottedGroups() {
   return [...(cur ? [cur] : []), ...groups.filter((g) => g !== cur && S.checked.has(g.key))];
 }
 
+/** Tooltip for a list row: the distinct instrument descriptions of its epochs, then the source. */
+function rowTip(g) {
+  const instruments = [...new Set(epochsOf(g).map((c) => c.instrument).filter(Boolean))];
+  return [...instruments.map((d) => `Instrument: ${d}`), `Source: ${g.origin}`].join('\n');
+}
+
 function renderRows() {
   const list = $('sidList');
   const groups = visibleGroups();
@@ -302,7 +308,7 @@ function renderRows() {
     if (plotted.length > 1 && slot >= 0) sw.style.background = `var(${plotColor(slot)})`;
     const name = document.createElement('button');
     name.type = 'button'; name.className = 'sid-name'; name.textContent = g.label;
-    name.dataset.key = g.key; name.dataset.tip = g.origin;
+    name.dataset.key = g.key; name.dataset.tip = rowTip(g);
     if (g.key === S.key) name.setAttribute('aria-current', 'true');
     row.append(cb, sw, name);
     list.appendChild(row);
@@ -544,6 +550,18 @@ function updateAll() {
       title.appendChild(more);
     }
   }
+
+  // One line per plotted response, in its plot colour, when several are plotted.
+  const instrument = $('instrument');
+  const lines = [];
+  if (S.results.length > 1) {
+    for (const r of S.results) {
+      const c = S.channels.find((x) => x.id === r.chanId);
+      if (c && c.instrument) lines.push(`<div>Instrument (${esc(r.label)}): <b style="color:var(${r.color})">${esc(c.instrument)}</b></div>`);
+    }
+  } else if (chan && chan.instrument) lines.push(`Instrument: <b>${esc(chan.instrument)}</b>`);
+  instrument.hidden = !lines.length;
+  instrument.innerHTML = lines.join('');
 
   const tbl = $('stageTable'), body = tbl.querySelector('tbody');
   body.innerHTML = '';

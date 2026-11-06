@@ -139,3 +139,9 @@ def test_gui_api_loads_and_evaluates():
     req = {"channel": 0, "frequencies": {"min": 0.01, "max": 10, "count": 3, "spacing": "log"}, "unit": "vel"}
     assert json.loads(web_api.evaluate_response(json.dumps(req)))["ok"] is True
     web_api.clear()
+
+
+def test_instrument_from_insttype_annotation():
+    (chan,) = sr.read_response(PFO)
+    assert chan.instrument == "Streckeisen STS-1 Seismometer with Metrozet E300"
+    assert parse_sacpz("POLES 1\n-1 0\nCONSTANT 2\n")[0].instrument == ""

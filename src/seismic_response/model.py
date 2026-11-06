@@ -178,6 +178,7 @@ class Channel:
     end_time: Optional[datetime] = None  # None means open-ended
     stages: List[Stage] = field(default_factory=list)
     origin: str = ""  # e.g. file name the channel was read from
+    instrument: str = ""  # instrument description, when the input carries one
 
     @property
     def source_id(self) -> str:

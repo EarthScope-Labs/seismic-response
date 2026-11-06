@@ -247,3 +247,31 @@ def test_parse_iso_time_variants():
     assert parse_iso_time("2014-12-17T18:40:00+01:00") == datetime(2014, 12, 17, 17, 40, tzinfo=UTC)
     with pytest.raises(ValueError):
         parse_iso_time("17/12/2014")
+
+
+# ------------------------------------------------------------------ instrument description
+
+
+def _stationxml(sensor: str) -> str:
+    return (
+        '<FDSNStationXML xmlns="http://www.fdsn.org/xml/station/1" schemaVersion="1.1">'
+        '<Network code="XX"><Station code="TEST">'
+        '<Channel code="BHZ" locationCode="00" startDate="2020-01-01T00:00:00Z">'
+        f"{sensor}</Channel></Station></Network></FDSNStationXML>"
+    )
+
+
+def test_stationxml_instrument_falls_back_to_sensor_type():
+    (chan,) = load_fixture("real/station-3.xml")
+    assert chan.instrument == "Mark Products L22/Reftek 130 Datalogger"
+
+
+def test_stationxml_instrument_prefers_sensor_description():
+    xml = _stationxml("<Sensor><Type>STS-2</Type><Description>Streckeisen STS-2 G3</Description></Sensor>")
+    assert sr.parse_response(xml)[0].instrument == "Streckeisen STS-2 G3"
+
+
+def test_instrument_empty_without_a_description(anmo):
+    assert sr.parse_response(_stationxml(""))[0].instrument == ""
+    assert sr.parse_response(_stationxml("<Sensor/>"))[0].instrument == ""
+    assert all(c.instrument == "" for c in anmo)

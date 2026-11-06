@@ -59,6 +59,7 @@ def _channel_json(index: int, c: Channel) -> Dict[str, Any]:
         "start": format_iso_time(c.start_time),
         "end": format_iso_time(c.end_time),
         "origin": c.origin,
+        "instrument": c.instrument,
         "stages": [_stage_json(s) for s in c.stages],
     }
 
