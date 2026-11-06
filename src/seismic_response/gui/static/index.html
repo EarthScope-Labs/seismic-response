@@ -140,7 +140,7 @@
   </section>
 </main>
 
-<footer class="foot">Computed with <code>seismic-response</code> <span id="version"></span></footer>
+<footer class="foot">Computed with <a href="https://github.com/EarthScope-Labs/seismic-response" target="_blank" rel="noopener"><code>seismic-response</code></a> <span id="version"></span></footer>
 <dialog id="helpDialog" aria-labelledby="helpTitle">
   <div class="help-head">
     <h2 id="helpTitle">Help</h2>
@@ -163,7 +163,9 @@
         If an evaluation time is set the query is limited to that time. The service must allow cross-origin
         requests.</dd>
       <dt>2 · Channel &amp; time</dt>
-      <dd>The Source ID filter is a glob, or a substring when it has no wildcards. The evaluation time is UTC
+      <dd>Each loaded file or fetch is kept separate: a Source ID that appears in more than one is listed once per
+        source and numbered (<em>#1</em>, <em>#2</em>, …), and hovering over an entry shows the file name or
+        service query it came from. The Source ID filter is a glob, or a substring when it has no wildcards. The evaluation time is UTC
         (a date alone means 00:00:00). The epoch containing that time is used; if several overlap, the
         shortest wins, as in evalresp. If none covers the time, the nearest epoch is shown. Choosing an epoch
         by hand moves the time inside it.</dd>

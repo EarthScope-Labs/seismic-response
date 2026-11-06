@@ -132,7 +132,7 @@ def test_errors(text, message):
 
 def test_gui_api_loads_and_evaluates():
     web_api.clear()
-    assert json.loads(web_api.load("pfo.pz", PFO.read_text())) == {"ok": True, "added": 1}
+    assert json.loads(web_api.load("pfo.pz", PFO.read_text())) == {"ok": True, "added": 1, "load": 0}
     listed = json.loads(web_api.channels())
     assert listed[0]["source_id"] == "FDSN:II_PFO_00_B_H_Z"
     assert listed[0]["stages"][0]["sample_rate"] == 20.0  # gives the GUI its Nyquist (10 Hz)

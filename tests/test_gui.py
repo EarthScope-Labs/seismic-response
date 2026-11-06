@@ -32,7 +32,7 @@ def request(channel=0, **kw):
 
 
 def test_load_list_and_select():
-    assert json.loads(web_api.load("RESP.IU.ANMO.00.BHZ", ANMO)) == {"ok": True, "added": 2}
+    assert json.loads(web_api.load("RESP.IU.ANMO.00.BHZ", ANMO)) == {"ok": True, "added": 2, "load": 0}
     chans = json.loads(web_api.channels())
     assert [c["id"] for c in chans] == [0, 1]
     first = chans[0]
@@ -42,6 +42,20 @@ def test_load_list_and_select():
     assert json.loads(web_api.select("FDSN:IU_ANMO_*", "1999-06-01T00:00:00Z")) == [0]
     assert json.loads(web_api.select("FDSN:IU_ANMO_*", "2005-01-01T00:00:00Z")) == [1]
     assert json.loads(web_api.select("FDSN:XX_*", None)) == []
+
+
+def test_loads_are_kept_separate():
+    assert json.loads(web_api.load("a.resp", ANMO))["load"] == 0
+    assert json.loads(web_api.load("b.resp", ANMO))["load"] == 1
+    chans = json.loads(web_api.channels())
+    assert [(c["load"], c["origin"]) for c in chans] == [(0, "a.resp"), (0, "a.resp"), (1, "b.resp"), (1, "b.resp")]
+    t = "2005-01-01T00:00:00Z"
+    assert json.loads(web_api.select("FDSN:IU_ANMO_*", t)) in ([1], [3])
+    assert json.loads(web_api.select("FDSN:IU_ANMO_*", t, 0)) == [1]
+    assert json.loads(web_api.select("FDSN:IU_ANMO_*", t, 1)) == [3]
+    assert json.loads(web_api.select("FDSN:IU_ANMO_*", t, 7)) == []
+    web_api.clear()
+    assert json.loads(web_api.load("c.resp", ANMO))["load"] == 0
 
 
 def test_evaluate_matches_known_values_and_is_json_safe():
@@ -119,7 +133,7 @@ def test_server_api_round_trip(live_server):
     assert json.loads(http_call(live_server, "GET", "/api/ping")[2])["ok"]
     body = json.dumps(["RESP.IU.ANMO.00.BHZ", ANMO.decode("utf-8")])
     status, _, data = http_call(live_server, "POST", "/api/load", body)
-    assert status == 200 and json.loads(data) == {"ok": True, "added": 2}
+    assert status == 200 and json.loads(data) == {"ok": True, "added": 2, "load": 0}
     status, _, data = http_call(live_server, "POST", "/api/evaluate", json.dumps([request()]))
     assert json.loads(data)["ok"]
     # malformed bodies are answered, not crashed on

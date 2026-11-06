@@ -61,7 +61,7 @@ function setBadge(text, ok = false) {
 
 const S = {
   channels: [],       // every loaded channel epoch (from the backend)
-  sid: null,          // selected Source ID
+  key: null,          // selected source group (load + Source ID), see sourceGroups()
   chanId: null,       // selected channel epoch id
   last: null,         // last evaluation result
   request: null,      // request that produced it
@@ -154,7 +154,7 @@ async function clearResponses() {
   catch (e) { setMsg($('loadMsg'), 'Could not clear: ' + e.message, 'error'); return; }
   $('clearBtn').disabled = true;
   S.seq++; // drop any evaluation still in flight
-  S.channels = []; S.sid = null; S.chanId = null; S.last = null; S.request = null;
+  S.channels = []; S.key = null; S.chanId = null; S.last = null; S.request = null;
   S.excluded.clear();
   $('alerts').innerHTML = '';
   setMsg($('epochMsg'), '');
@@ -187,7 +187,7 @@ async function fetchFdsn() {
     if (r.status === 404 || r.status === 204) throw new Error('The service has no matching response.');
     if (!r.ok) throw new Error('Service returned HTTP ' + r.status);
     const text = await r.text();
-    const res = await backend.call('load', `${q.get('net')}.${q.get('sta')}.xml`, text);
+    const res = await backend.call('load', url, text);
     if (!res.ok) throw new Error(res.error);
     setMsg(msg, `Fetched ${res.added} channel epoch${res.added === 1 ? '' : 's'}.`, 'ok');
     await refreshChannels(true);
@@ -205,39 +205,55 @@ async function refreshChannels(selectNew) {
   renderSidList(selectNew);
 }
 
-function sourceIds() {
-  const seen = new Map();
-  for (const c of S.channels) if (!seen.has(c.source_id)) seen.set(c.source_id, []);
-  for (const c of S.channels) seen.get(c.source_id).push(c);
-  return seen;
+/** One group per (load, Source ID); a Source ID present in several loads is numbered #1, #2, ... */
+function sourceGroups() {
+  const byKey = new Map();
+  for (const c of S.channels) {
+    const key = `${c.load}|${c.source_id}`;
+    if (!byKey.has(key)) byKey.set(key, { key, sid: c.source_id, load: c.load, origin: c.origin, label: c.source_id });
+  }
+  const groups = [...byKey.values()].sort((a, b) => (a.sid < b.sid ? -1 : a.sid > b.sid ? 1 : a.load - b.load));
+  const total = new Map();
+  for (const g of groups) total.set(g.sid, (total.get(g.sid) || 0) + 1);
+  const index = new Map();
+  for (const g of groups) {
+    if (total.get(g.sid) < 2) continue;
+    index.set(g.sid, (index.get(g.sid) || 0) + 1);
+    g.label = `${g.sid} #${index.get(g.sid)}`;
+  }
+  return groups;
 }
+
+function groupOf(key) { return sourceGroups().find((g) => g.key === key) || null; }
 
 function renderSidList(keepOrPickFirst) {
   const filter = $('sidFilter').value.trim();
   const re = filter ? globToRegExp(filter.includes('*') || filter.includes('?') ? filter : '*' + filter + '*') : null;
   const sel = $('sidSelect');
-  const groups = [...sourceIds().keys()].sort().filter((s) => !re || re.test(s));
+  const groups = sourceGroups().filter((g) => !re || re.test(g.sid));
   sel.innerHTML = '';
-  for (const sid of groups) {
+  for (const g of groups) {
     const o = document.createElement('option');
-    o.value = sid; o.textContent = sid;
+    o.value = g.key; o.textContent = g.label; o.title = g.origin;
     sel.appendChild(o);
   }
-  if (!groups.length) { S.sid = null; renderEpochs(); updateAll(); return; }
-  if (!groups.includes(S.sid) || keepOrPickFirst === true && !S.sid) S.sid = groups[0];
-  sel.value = S.sid;
+  if (!groups.length) { S.key = null; renderEpochs(); updateAll(); return; }
+  if (!groups.some((g) => g.key === S.key) || keepOrPickFirst === true && !S.key) S.key = groups[0].key;
+  sel.value = S.key;
   renderEpochs();
   updateAll();
 }
 
-function epochsOf(sid) {
-  return S.channels.filter((c) => c.source_id === sid).sort((a, b) => (a.start || '').localeCompare(b.start || ''));
+function epochsOf(g) {
+  return S.channels.filter((c) => c.source_id === g.sid && c.load === g.load)
+    .sort((a, b) => (a.start || '').localeCompare(b.start || ''));
 }
 
 function renderEpochs() {
   const sel = $('epochSelect');
   sel.innerHTML = '';
-  const eps = S.sid ? epochsOf(S.sid) : [];
+  const group = S.key ? groupOf(S.key) : null;
+  const eps = group ? epochsOf(group) : [];
   for (const c of eps) {
     const o = document.createElement('option');
     o.value = c.id;
@@ -262,12 +278,13 @@ function contains(c, t) {
 }
 
 async function chooseEpochByTime() {
-  if (!S.sid) return;
+  const group = S.key ? groupOf(S.key) : null;
+  if (!group) return;
   const t = parseUtc($('timeInput').value);
   if (!t && $('timeInput').value.trim()) { setMsg($('epochMsg'), 'Enter the time as YYYY-MM-DD or YYYY-MM-DD hh:mm:ss.', 'error'); return; }
-  const ids = await backend.call('select', S.sid, t ? toLocalInput(t) + 'Z' : null);
+  const ids = await backend.call('select', group.sid, t ? toLocalInput(t) + 'Z' : null, group.load);
   if (!Array.isArray(ids)) { setMsg($('epochMsg'), ids.error || 'Could not select an epoch.', 'error'); return; }
-  const eps = epochsOf(S.sid);
+  const eps = epochsOf(group);
   const note = $('epochMsg');
   if (ids.length) {
     if (S.chanId !== ids[0]) S.excluded.clear();
@@ -379,7 +396,9 @@ function updateAll() {
   const chan = S.channels.find((c) => c.id === S.chanId);
   $('exportBtn').disabled = !S.last;
   const title = $('plotTitle');
-  title.textContent = chan ? chan.source_id : 'No response loaded';
+  const group = chan && S.key ? groupOf(S.key) : null;
+  title.textContent = chan ? (group ? group.label : chan.source_id) : 'No response loaded';
+  title.title = chan ? chan.origin : '';
   if (chan) {
     const range = document.createElement('span');
     range.className = 'title-range';
@@ -768,7 +787,7 @@ function wire() {
   $('clearBtn').onclick = clearResponses;
 
   $('sidFilter').oninput = debounce(() => renderSidList(), 150);
-  $('sidSelect').onchange = () => { S.sid = $('sidSelect').value; renderEpochs(); };
+  $('sidSelect').onchange = () => { S.key = $('sidSelect').value; renderEpochs(); };
   $('timeInput').onchange = chooseEpochByTime;
   $('nowBtn').onclick = () => { $('timeInput').value = fmtTimeField(new Date()); chooseEpochByTime(); };
   $('epochSelect').onchange = onEpochPicked;

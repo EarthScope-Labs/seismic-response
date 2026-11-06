@@ -23,6 +23,8 @@ from .timeutil import format_iso_time, parse_iso_time
 __all__ = ["load", "clear", "channels", "select", "evaluate_response", "export_text", "version", "call"]
 
 _store: List[Channel] = []
+_loads: List[int] = []  # load number of each _store entry
+_next_load = 0
 
 
 def _num(x: float) -> Optional[float]:
@@ -47,6 +49,7 @@ def _stage_json(st) -> Dict[str, Any]:
 def _channel_json(index: int, c: Channel) -> Dict[str, Any]:
     return {
         "id": index,
+        "load": _loads[index],
         "source_id": c.source_id,
         "nslc": c.nslc,
         "network": c.network,
@@ -67,23 +70,31 @@ def version() -> str:
 
 def clear() -> str:
     """Forget all loaded responses."""
+    global _next_load
     _store.clear()
+    _loads.clear()
+    _next_load = 0
     return json.dumps({"ok": True})
 
 
 def load(name: str, content: str) -> str:
     """Parse StationXML/RESP text and add its channels to the session.
 
-    Returns ``{"ok": true, "added": n}`` or ``{"ok": false, "error": "..."}``.
+    Returns ``{"ok": true, "added": n, "load": k}`` or ``{"ok": false, "error": "..."}``,
+    where ``k`` numbers this call (0, 1, ...) and tags its channels.
     """
+    global _next_load
     try:
         found = parse_response(content, origin=name)
     except SeismicResponseError as exc:
         return json.dumps({"ok": False, "error": str(exc)})
     except Exception as exc:  # malformed input must never break the UI
         return json.dumps({"ok": False, "error": f"Could not read {name!r}: {exc}"})
+    load_id = _next_load
+    _next_load += 1
     _store.extend(found)
-    return json.dumps({"ok": True, "added": len(found)})
+    _loads.extend([load_id] * len(found))
+    return json.dumps({"ok": True, "added": len(found), "load": load_id})
 
 
 def channels() -> str:
@@ -91,14 +102,19 @@ def channels() -> str:
     return json.dumps([_channel_json(i, c) for i, c in enumerate(_store)])
 
 
-def select(source_id: str = "*", time: Optional[str] = None) -> str:
-    """Channel ids matching a Source ID glob (and time), following evalresp's epoch rules."""
+def select(source_id: str = "*", time: Optional[str] = None, load: Optional[int] = None) -> str:
+    """Channel ids matching a Source ID glob (and time), following evalresp's epoch rules.
+
+    A non-null ``load`` restricts the candidates to channels from that load.
+    """
     try:
         t = parse_iso_time(time) if time else None
-    except ValueError as exc:
+        wanted = int(load) if load is not None else None
+    except (ValueError, TypeError) as exc:
         return json.dumps({"ok": False, "error": str(exc)})
     pattern = source_id or "*"
-    found = select_channels(_store, pattern, time=t)
+    pool = [c for c, n in zip(_store, _loads) if wanted is None or n == wanted]
+    found = select_channels(pool, pattern, time=t)
     ids = [i for i, c in enumerate(_store) if any(c is f for f in found)]
     return json.dumps(ids)
 
