@@ -1,10 +1,11 @@
 # seismic-response
 
-Evaluate seismological instrument responses from **StationXML**, **SEED RESP** or **SAC poles-and-zeros** files and get results that
-match the C [`evalresp`](https://github.com/EarthScope/evalresp) program, as a
+Evaluate seismological instrument responses specified as **StationXML**, **SEED RESP** or **SAC poles-and-zeros**
+as selected frequencies to get complex-spectra or frequency-amplitude-phase results.  This package is a
+superset of the capability of the legacy [evalresp](https://github.com/EarthScope/evalresp) program.
 
 * **Python library**: pure Python, no dependencies, runs unchanged under [Pyodide](https://pyodide.org) (WebAssembly)
-* **evalresp-compatible command line**: `pyevalresp`
+* **evalresp-compatible command line**: `pyevalresp` (with a few [deliberate differences](#deliberate-differences-from-evalresp))
 * **interactive GUI**: a web app (plots amplitude and phase, per-stage curves, FDSN fetch, export) that runs
   locally, as a desktop window, or entirely in the browser with no server ([try it](https://earthscope-labs.github.io/seismic-response/app/))
 
@@ -70,7 +71,7 @@ evalresp's `vel`; pass `-u vel` to get evalresp's behavior.
 `seismic-response` is the umbrella command: `seismic-response info FILE [-s]` lists channels and stages,
 `seismic-response evalresp ...` is `pyevalresp`, and `seismic-response gui [FILE ...]` starts the GUI.
 
-## GUI
+## User Interface - Seismological Response Explorer
 
 ```sh
 seismic-response gui RESP.IU.ANMO.00.BHZ       # opens your browser on a local server
@@ -111,7 +112,7 @@ FIR (including continuation blockettes and delay correction), IIR coefficients, 
 stages, sensitivity-frequency renormalization, `dis`/`vel`/`acc`/`def` conversion including nm/mm/cm
 inputs, `-ts`, `-use-estimated-delay` and stage ranges.
 
-Deliberate differences from evalresp:
+### Deliberate differences from evalresp
 
 * **Default output unit.** With no unit requested, responses are evaluated in the units documented in the
   response (`def`): counts per m/s for a velocity sensor, counts per m/s² for an accelerometer, and so on.

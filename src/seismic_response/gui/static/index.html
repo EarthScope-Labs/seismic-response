@@ -14,7 +14,8 @@
   <h1>Seismic Response</h1>
   <span class="sub">instrument response viewer</span>
   <span class="spacer"></span>
-  <a class="docs-link" href="https://earthscope-labs.github.io/seismic-response/" target="_blank" rel="noopener">Docs</a>
+  <button type="button" id="helpBtn" class="theme-btn" aria-haspopup="dialog" title="What this app does and what each option means (?)">Help</button>
+  <a class="docs-link"href="https://earthscope-labs.github.io/seismic-response/" target="_blank" rel="noopener">Docs</a>
   <span id="backend" class="badge" title="How responses are computed">starting…</span>
   <button type="button" id="themeBtn" class="theme-btn" title="Switch between light and dark mode" aria-label="Switch between light and dark mode">◐</button>
 </header>
@@ -140,6 +141,89 @@
 </main>
 
 <footer class="foot">Computed with <code>seismic-response</code> <span id="version"></span></footer>
+<dialog id="helpDialog" aria-labelledby="helpTitle">
+  <div class="help-head">
+    <h2 id="helpTitle">Help</h2>
+    <button type="button" id="helpClose" aria-label="Close help">×</button>
+  </div>
+  <div class="help-body">
+    <h3>What this app does</h3>
+    <p>It computes an instrument's complex frequency response (counts per unit of ground motion) from
+      StationXML, RESP or SAC pole-zero metadata, and plots amplitude and phase. The calculation is a port of
+      evalresp. The badge at the top shows where it runs: <em>local Python</em> (the
+      <code>seismic-response gui</code> server) or <em>Python in browser</em> (Pyodide). Files you load stay
+      on your machine.</p>
+
+    <h3>Workflow</h3>
+    <dl>
+      <dt>1 · Response source</dt>
+      <dd>Drop or choose one or more files; they accumulate until you press <em>Clear loaded responses</em>.
+        <em>Fetch from an FDSN web service</em> queries a station service for network, station, location and
+        channel (<code>*</code> and <code>?</code> wildcards allowed; an empty location means <code>--</code>).
+        If an evaluation time is set the query is limited to that time. The service must allow cross-origin
+        requests.</dd>
+      <dt>2 · Channel &amp; time</dt>
+      <dd>The Source ID filter is a glob, or a substring when it has no wildcards. The evaluation time is UTC
+        (a date alone means 00:00:00). The epoch containing that time is used; if several overlap, the
+        shortest wins, as in evalresp. If none covers the time, the nearest epoch is shown. Choosing an epoch
+        by hand moves the time inside it.</dd>
+      <dt>3 · Frequencies</dt>
+      <dd>Minimum and maximum in Hz, number of points (1–20000), and log or linear spacing. Log spacing needs
+        values above zero. Until you edit the range, the maximum is 1.1 × the channel's Nyquist frequency. A
+        response consisting of a single response list uses its own listed frequencies.</dd>
+    </dl>
+
+    <h3>Options</h3>
+    <dl>
+      <dt>Output unit</dt>
+      <dd><em>As documented</em> (default) gives counts per the first stage's documented input unit, with no
+        conversion. Unlike evalresp, which defaults to velocity. Velocity, displacement and acceleration
+        convert the response accordingly; this requires a recognized ground-motion input unit, otherwise an
+        "undefined units" error is shown.</dd>
+      <dt>Show each stage separately</dt>
+      <dd>Overlays each included stage's contribution. Their product is the total response; unit scaling is
+        part of the first stage.</dd>
+      <dt>Unwrap phase</dt>
+      <dd>Removes ±360° jumps (evalresp's method) and widens the phase axis to fit. FAP export is always
+        unwrapped.</dd>
+      <dt>Show sensitivity &amp; Nyquist lines</dt>
+      <dd>Dashed lines at the sensitivity gain (the reported value, or the calculated one if none is
+        reported), the sensitivity frequency, and the Nyquist frequency (half the final output sample
+        rate).</dd>
+      <dt>Show measurement points</dt>
+      <dd>Marks every evaluated frequency on the curves.</dd>
+      <dt>Use reported total sensitivity</dt>
+      <dd>Scales by the overall sensitivity reported in the metadata (stage 0) instead of the product of the
+        stage gains. Same as evalresp <code>-ts</code>.</dd>
+      <dt>Use estimated delay (asymmetric FIR)</dt>
+      <dd>For asymmetric FIR stages, applies the stage's estimated delay as the time shift instead of the
+        correction applied minus the filter's calculated delay. Same as evalresp
+        <code>-use-estimated-delay</code>.</dd>
+      <dt>Polynomial (B62) input value</dt>
+      <dd>The input value at which a polynomial (blockette 62) response is evaluated. Must be above zero;
+        ignored for other response types.</dd>
+    </dl>
+
+    <h3>Reading the results</h3>
+    <p>The upper panel is amplitude (log scale), the lower is phase in degrees. The thick line is the total
+      response; thin lines are individual stages. Hover for frequency, amplitude and phase. The summary line
+      compares the sensitivity calculated from the stages with the reported one, and consistency warnings
+      appear above the plot.</p>
+
+    <h3>Stage table</h3>
+    <p>Lists each stage's type, gain, gain frequency, units (input → output) and sample rate. <em>Total</em>
+      is stage 0, the reported overall sensitivity. Untick a stage to leave it out of the calculation;
+      <em>All</em>/<em>None</em> toggles every stage. Coloured stage numbers match the overlay curves.</p>
+
+    <h3>Export</h3>
+    <p>Text formats follow evalresp: <em>freq / amp / phase</em> (one file), <em>amplitude &amp; phase</em>
+      (the AMP and PHASE listings in one file) and <em>complex spectra</em> (real and imaginary parts). The
+      plot exports as SVG or PNG as displayed.</p>
+
+    <p class="hint">Full documentation:
+      <a href="https://earthscope-labs.github.io/seismic-response/" target="_blank" rel="noopener">earthscope-labs.github.io/seismic-response</a></p>
+  </div>
+</dialog>
 <script src="app.js"></script>
 </body>
 </html>

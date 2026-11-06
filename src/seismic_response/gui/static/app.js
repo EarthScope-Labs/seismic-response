@@ -747,7 +747,16 @@ function wire() {
     document.documentElement.dataset.theme = next;
     try { localStorage.setItem('theme', next); } catch (e) { /* storage unavailable */ }
   };
-  $('openBtn').onclick = () => $('fileInput').click();
+  const help = $('helpDialog');
+  $('helpBtn').onclick = () => help.showModal();
+  $('helpClose').onclick = () => help.close();
+  help.addEventListener('click', (e) => { if (e.target === help) help.close(); });
+  document.addEventListener('keydown', (e) => {
+    if (e.key !== '?' || help.open || e.ctrlKey || e.metaKey || e.altKey) return;
+    if (/^(INPUT|SELECT|TEXTAREA)$/.test(document.activeElement.tagName)) return;
+    help.showModal();
+  });
+  $('openBtn').onclick =() => $('fileInput').click();
   $('fileInput').onchange = (e) => { loadFiles([...e.target.files]); e.target.value = ''; };
   const drop = $('drop');
   ['dragenter', 'dragover'].forEach((t) => drop.addEventListener(t, (e) => { e.preventDefault(); drop.classList.add('over'); }));
