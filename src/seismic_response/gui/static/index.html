@@ -64,9 +64,10 @@
       <label>FDSN Source ID filter
         <input id="sidFilter" placeholder="e.g. FDSN:IU_ANMO_*  (glob)" spellcheck="false">
       </label>
-      <label>Source ID
-        <select id="sidSelect" size="6" aria-label="Source IDs"></select>
-      </label>
+      <div class="field">
+        <span id="sidLabel" class="field-label">Responses (tick to compare)</span>
+        <div id="sidList" class="sidlist" role="group" aria-labelledby="sidLabel"></div>
+      </div>
       <label>Evaluation time (UTC)
         <div class="inline">
           <input id="timeInput" type="text" placeholder="YYYY-MM-DD hh:mm:ss" pattern="\d{4}-\d\d-\d\d([ T]\d\d:\d\d(:\d\d)?)?" maxlength="19" autocomplete="off" spellcheck="false">
@@ -173,7 +174,12 @@
       <dt>2 · Channel &amp; time</dt>
       <dd>Each loaded file or fetch is kept separate: a Source ID that appears in more than one is listed once per
         source and numbered (<em>#1</em>, <em>#2</em>, …), and hovering over an entry shows the file name or
-        service query it came from. The Source ID filter is a glob, or a substring when it has no wildcards. The evaluation time is UTC
+        service query it came from. Click a row (or use the up and down arrow keys) to switch to that response, the
+        <em>current</em> one (highlighted). Tick a row's box to keep it in the plot for comparison: ticked rows stay
+        plotted when you select another row, and unticked ones are replaced. The epoch choice, stage table, summary
+        and text export follow the current response, while the others use the epoch at the evaluation time with all
+        stages included. The Source ID filter is a glob, or a substring when it has no wildcards; ticks are kept
+        while filtering and only visible ticked responses are plotted. The evaluation time is UTC
         (a date alone means 00:00:00). The epoch containing that time is used; if several overlap, the
         shortest wins, as in evalresp. If none covers the time, the nearest epoch is shown. Choosing an epoch
         by hand moves the time inside it.</dd>
@@ -192,14 +198,15 @@
         "undefined units" error is shown.</dd>
       <dt>Show each stage separately</dt>
       <dd>Overlays each included stage's contribution. Their product is the total response; unit scaling is
-        part of the first stage.</dd>
+        part of the first stage. Unavailable (greyed out) while several responses are plotted; your choice is
+        kept for when only one is.</dd>
       <dt>Unwrap phase</dt>
       <dd>Removes ±360° jumps (evalresp's method) and widens the phase axis to fit. FAP export is always
         unwrapped.</dd>
       <dt>Show sensitivity &amp; Nyquist lines</dt>
       <dd>Dashed lines at the sensitivity gain (the reported value, or the calculated one if none is
         reported), the sensitivity frequency, and the Nyquist frequency (half the final output sample
-        rate).</dd>
+        rate). With several responses plotted, each has its own lines, coloured like its curve.</dd>
       <dt>Show measurement points</dt>
       <dd>Marks every evaluated frequency on the curves.</dd>
       <dt>Use reported total sensitivity</dt>
@@ -216,7 +223,9 @@
 
     <h3>Reading the results</h3>
     <p>The upper panel is amplitude (log scale), the lower is phase in degrees. The thick line is the total
-      response; thin lines are individual stages. Hover for frequency, amplitude and phase. The summary line
+      response; thin lines are individual stages. With several responses ticked, each total response gets its own
+      colour (shown in the list and the legend) and stage curves are not drawn. Hover for frequency, amplitude and
+      phase. The summary line
       compares the sensitivity calculated from the stages with the reported one, and consistency warnings
       appear above the plot.</p>
 

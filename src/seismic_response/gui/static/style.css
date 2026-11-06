@@ -71,12 +71,30 @@ h2 { font-size: .95rem; margin: 0 0 .6rem; }
 
 label { display: block; font-size: .85rem; color: var(--muted); margin-top: .5rem; }
 label.check { display: flex; align-items: center; gap: .5rem; color: var(--text); margin-top: .4rem; }
+label.check:has(input:disabled) { color: var(--muted); opacity: .6; cursor: not-allowed; }
 input, select, button {
   font: inherit; color: var(--text); background: var(--surface); border: 1px solid var(--border);
   border-radius: 6px; padding: .35rem .5rem;
 }
 label > input:not([type=checkbox]):not([type=radio]), label > select { display: block; width: 100%; margin-top: .2rem; }
 select[size] { padding: .15rem; }
+.field { margin-top: .5rem; }
+.field-label { display: block; font-size: .85rem; color: var(--muted); }
+.sidlist {
+  margin-top: .2rem; max-height: 9.5rem; min-height: 2.2rem; overflow-y: auto;
+  border: 1px solid var(--border); border-radius: 6px; background: var(--surface);
+}
+.sid-row { display: flex; align-items: center; gap: .4rem; padding: 0 .4rem; border-left: 3px solid transparent; cursor: pointer; }
+.sid-row:hover:not(.current) { background: var(--surface-2); }
+.sid-row.current { background: var(--surface-2); border-left-color: var(--accent); }
+.sid-row input { margin: 0; padding: 0; }
+.sid-swatch { flex: none; width: 14px; height: 3px; border-radius: 2px; background: transparent; }
+button.sid-name {
+  flex: 1; min-width: 0; text-align: left; border: 0; background: transparent; padding: .25rem 0;
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+button.sid-name:hover:not(:disabled) { background: transparent; text-decoration: underline; }
+.sid-row.current button.sid-name { font-weight: 600; }
 button { cursor: pointer; }
 button:hover:not(:disabled) { background: var(--surface-2); }
 button:disabled { opacity: .5; cursor: not-allowed; }
@@ -131,6 +149,7 @@ details > button { margin-top: .6rem; }
   border-radius: 6px; padding: .3rem .5rem; font-size: .78rem; box-shadow: 0 4px 14px rgb(0 0 0 / .2);
   font-variant-numeric: tabular-nums; white-space: nowrap;
 }
+.tip .sw { display: inline-block; width: 12px; height: 3px; margin-right: .35rem; vertical-align: middle; border-radius: 2px; }
 .hint-tip {
   position: fixed; z-index: 50; max-width: min(32rem, calc(100vw - 1rem)); pointer-events: none;
   background: var(--surface); color: var(--text); border: 1px solid var(--border); border-radius: 6px;

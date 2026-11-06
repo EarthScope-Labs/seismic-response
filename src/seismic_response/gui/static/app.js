@@ -61,9 +61,11 @@ function setBadge(text, ok = false) {
 
 const S = {
   channels: [],       // every loaded channel epoch (from the backend)
-  key: null,          // selected source group (load + Source ID), see sourceGroups()
-  chanId: null,       // selected channel epoch id
-  last: null,         // last evaluation result
+  key: null,          // current source group (load + Source ID), see sourceGroups()
+  checked: new Set(), // keys of the source groups ticked for comparison (the current group is always plotted)
+  chanId: null,       // current group's selected channel epoch id
+  results: [],        // plotted evaluations: { key, label, chanId, color, current, res }
+  last: null,         // current group's evaluation result
   request: null,      // request that produced it
   seq: 0,             // evaluation sequence number (to drop stale replies)
   excluded: new Set(), // stage numbers unchecked in the stage table
@@ -72,6 +74,11 @@ const S = {
 
 const STAGE_COLORS = ['--c2', '--c3', '--c4', '--c5', '--c6', '--c7', '--c8'];
 function stageColor(seq) { return STAGE_COLORS[(((seq - 1) % STAGE_COLORS.length) + STAGE_COLORS.length) % STAGE_COLORS.length]; }
+const PLOT_COLORS = ['--c1', ...STAGE_COLORS];
+function plotColor(i) { return PLOT_COLORS[i % PLOT_COLORS.length]; }
+
+function minOf(a) { let m = Infinity; for (const v of a) if (v < m) m = v; return m; }
+function maxOf(a) { let m = -Infinity; for (const v of a) if (v > m) m = v; return m; }
 
 /* ------------------------------------------------------------------ helpers */
 
@@ -189,7 +196,8 @@ async function clearResponses() {
   catch (e) { setMsg($('loadMsg'), 'Could not clear: ' + e.message, 'error'); return; }
   $('clearBtn').disabled = true;
   S.seq++; // drop any evaluation still in flight
-  S.channels = []; S.key = null; S.chanId = null; S.last = null; S.request = null;
+  S.channels = []; S.key = null; S.chanId = null; S.last = null; S.request = null; S.results = [];
+  S.checked.clear();
   S.excluded.clear();
   $('alerts').innerHTML = '';
   setMsg($('epochMsg'), '');
@@ -261,22 +269,76 @@ function sourceGroups() {
 
 function groupOf(key) { return sourceGroups().find((g) => g.key === key) || null; }
 
-function renderSidList(keepOrPickFirst) {
+function visibleGroups() {
   const filter = $('sidFilter').value.trim();
   const re = filter ? globToRegExp(filter.includes('*') || filter.includes('?') ? filter : '*' + filter + '*') : null;
-  const sel = $('sidSelect');
-  const groups = sourceGroups().filter((g) => !re || re.test(g.sid));
-  sel.innerHTML = '';
+  return sourceGroups().filter((g) => !re || re.test(g.sid));
+}
+
+/** The current group first (it takes the first plot colour), then the visible ticked groups in list order. */
+function plottedGroups() {
+  const groups = visibleGroups();
+  const cur = groups.find((g) => g.key === S.key);
+  return [...(cur ? [cur] : []), ...groups.filter((g) => g !== cur && S.checked.has(g.key))];
+}
+
+function renderRows() {
+  const list = $('sidList');
+  const groups = visibleGroups();
+  const plotted = plottedGroups();
+  const active = list.contains(document.activeElement)
+    ? { key: document.activeElement.dataset.key, box: document.activeElement.tagName === 'INPUT' } : null;
+  list.innerHTML = '';
   for (const g of groups) {
-    const o = document.createElement('option');
-    o.value = g.key; o.textContent = g.label; o.dataset.tip = g.origin;
-    sel.appendChild(o);
+    const row = document.createElement('div');
+    row.className = 'sid-row' + (g.key === S.key ? ' current' : '');
+    row.dataset.key = g.key;
+    const cb = document.createElement('input');
+    cb.type = 'checkbox'; cb.checked = S.checked.has(g.key); cb.dataset.key = g.key;
+    cb.setAttribute('aria-label', `Compare ${g.label}`);
+    const sw = document.createElement('span');
+    sw.className = 'sid-swatch';
+    const slot = plotted.findIndex((p) => p.key === g.key);
+    if (plotted.length > 1 && slot >= 0) sw.style.background = `var(${plotColor(slot)})`;
+    const name = document.createElement('button');
+    name.type = 'button'; name.className = 'sid-name'; name.textContent = g.label;
+    name.dataset.key = g.key; name.dataset.tip = g.origin;
+    if (g.key === S.key) name.setAttribute('aria-current', 'true');
+    row.append(cb, sw, name);
+    list.appendChild(row);
   }
-  if (!groups.length) { S.key = null; renderEpochs(); updateAll(); return; }
-  if (!groups.some((g) => g.key === S.key) || keepOrPickFirst === true && !S.key) S.key = groups[0].key;
-  sel.value = S.key;
+  if (active) focusRow(active.key, active.box);
+}
+
+function focusRow(key, box) {
+  const target = [...$('sidList').querySelectorAll(box ? 'input' : 'button')].find((x) => x.dataset.key === key);
+  if (target) target.focus();
+}
+
+function renderSidList() {
+  const all = sourceGroups();
+  const known = new Set(all.map((g) => g.key));
+  for (const k of [...S.checked]) if (!known.has(k)) S.checked.delete(k);
+  const groups = visibleGroups();
+  if (!groups.length) { S.key = null; renderRows(); renderEpochs(); updateAll(); recompute(); return; }
+  if (!groups.some((g) => g.key === S.key)) S.key = groups[0].key;
+  renderRows();
   renderEpochs();
   updateAll();
+}
+
+/** Make a group the current one (it drives the epoch, stage table and text export). */
+function setCurrent(key) {
+  S.key = key;
+  renderRows();
+  renderEpochs();
+}
+
+function onTick(key, on) {
+  if (on) S.checked.add(key); else S.checked.delete(key);
+  renderRows();
+  updateAll();
+  recompute();
 }
 
 function epochsOf(g) {
@@ -317,28 +379,29 @@ async function chooseEpochByTime() {
   if (!group) return;
   const t = parseUtc($('timeInput').value);
   if (!t && $('timeInput').value.trim()) { setMsg($('epochMsg'), 'Enter the time as YYYY-MM-DD or YYYY-MM-DD hh:mm:ss.', 'error'); return; }
-  const ids = await backend.call('select', group.sid, t ? toLocalInput(t) + 'Z' : null, group.load);
-  if (!Array.isArray(ids)) { setMsg($('epochMsg'), ids.error || 'Could not select an epoch.', 'error'); return; }
-  const eps = epochsOf(group);
+  const pick = await epochFor(group, t);
+  if (pick.error) { setMsg($('epochMsg'), pick.error, 'error'); return; }
   const note = $('epochMsg');
-  if (ids.length) {
-    if (S.chanId !== ids[0]) S.excluded.clear();
-    S.chanId = ids[0];
-    $('epochSelect').value = String(S.chanId);
-    setMsg(note, eps.length > 1 ? 'Epoch chosen for this time (shortest epoch containing it).' : '');
-  } else {
-    // Nothing covers this time: keep the nearest epoch so the user still sees a response
-    const nearest = t ? eps.reduce((best, c) => {
-      const d = (x) => Math.min(Math.abs(Date.parse(x.start || 0) - t), x.end ? Math.abs(Date.parse(x.end) - t) : Infinity);
-      return !best || d(c) < d(best) ? c : best;
-    }, null) : eps[0];
-    if (S.chanId !== nearest.id) S.excluded.clear();
-    S.chanId = nearest.id;
-    $('epochSelect').value = String(S.chanId);
-    setMsg(note, 'No epoch covers this time; showing the nearest one.');
-  }
+  if (S.chanId !== pick.id) S.excluded.clear();
+  S.chanId = pick.id;
+  $('epochSelect').value = String(S.chanId);
+  if (pick.covered) setMsg(note, epochsOf(group).length > 1 ? 'Epoch chosen for this time (shortest epoch containing it).' : '');
+  else setMsg(note, 'No epoch covers this time; showing the nearest one.');
   autoFrequencies();
   recompute();
+}
+
+/** Epoch of a group at time t: the shortest one containing it, else the nearest one. */
+async function epochFor(group, t) {
+  const ids = await backend.call('select', group.sid, t ? toLocalInput(t) + 'Z' : null, group.load);
+  if (!Array.isArray(ids)) return { error: ids.error || 'Could not select an epoch.' };
+  if (ids.length) return { id: ids[0], covered: true };
+  const eps = epochsOf(group);
+  const nearest = t ? eps.reduce((best, c) => {
+    const d = (x) => Math.min(Math.abs(Date.parse(x.start || 0) - t), x.end ? Math.abs(Date.parse(x.end) - t) : Infinity);
+    return !best || d(c) < d(best) ? c : best;
+  }, null) : eps[0];
+  return { id: nearest.id, covered: false };
 }
 
 /** Default the maximum frequency to the channel's Nyquist (unless the user chose a range). */
@@ -402,43 +465,84 @@ function validate(req) {
 
 const recompute = debounce(async () => {
   $('alerts').innerHTML = '';
-  if (S.chanId === null) return;
+  if (S.chanId === null) {
+    S.seq++;
+    S.last = null; S.request = null; S.results = [];
+    drawEmpty();
+    updateAll();
+    return;
+  }
   const req = buildRequest();
   const bad = validate(req);
   if (bad) { showAlert('error', bad); return; }
+  const plotted = plottedGroups();
+  const single = plotted.length === 1;
+  const curId = S.chanId;
+  const t = parseUtc($('timeInput').value);
   const mine = ++S.seq;
-  let res;
-  try { res = await backend.call('evaluate', JSON.stringify(req)); }
-  catch (e) { res = { ok: false, error: e.message }; }
+
+  // The current group uses its chosen epoch and stage selection; the others use the epoch at the evaluation time.
+  const out = await Promise.all(plotted.map(async (g, i) => {
+    const current = g.key === S.key;
+    const item = { key: g.key, label: g.label, color: plotColor(i), current, chanId: curId };
+    if (!current) {
+      const pick = await epochFor(g, t);
+      if (pick.error) return { ...item, res: { ok: false, error: pick.error } };
+      item.chanId = pick.id;
+    }
+    const r = { ...req, channel: item.chanId, per_stage: req.per_stage && single && current, exclude_stages: current ? req.exclude_stages : [] };
+    try { item.res = await backend.call('evaluate', JSON.stringify(r)); }
+    catch (e) { item.res = { ok: false, error: e.message }; }
+    return item;
+  }));
   if (mine !== S.seq) return; // a newer request superseded this one
+
   $('alerts').innerHTML = '';
-  if (!res.ok) {
-    S.last = null;
-    showAlert('error', res.error);
-    drawEmpty();
-    updateAll(true);
-    return;
+  const multi = out.length > 1;
+  for (const o of out) {
+    const prefix = multi ? o.label + ': ' : '';
+    if (!o.res.ok) showAlert('error', prefix + o.res.error);
+    else for (const w of o.res.warnings || []) showAlert('warn', prefix + w);
   }
-  S.last = res; S.request = req;
-  for (const w of res.warnings || []) showAlert('warn', w);
-  updateAll(true);
-  drawBode();
+  S.results = out.filter((o) => o.res.ok);
+  const cur = S.results.find((o) => o.current);
+  S.last = cur ? cur.res : null;
+  S.request = S.results.length ? { ...req, per_stage: req.per_stage && single } : null;
+  if (req.unit === 'def') {
+    const units = new Set(S.results.map((o) => (o.res.info.input_units || '').split(' - ')[0]));
+    if (units.size > 1) showAlert('warn', `The plotted responses have different input units (${[...units].join(', ')}); choose an output unit to compare amplitudes.`);
+  }
+  updateAll();
+  if (S.results.length) drawBode(); else drawEmpty();
 }, 120);
 
 /* ------------------------------------------------------------------ summary / table */
 
 function updateAll() {
+  const several = plottedGroups().length > 1;
+  const perStage = $('perStage');
+  perStage.disabled = several;
+  const perStageLabel = perStage.closest('label');
+  if (several) perStageLabel.dataset.tip = 'Stage curves are only drawn when a single response is plotted.';
+  else delete perStageLabel.dataset.tip;
   const chan = S.channels.find((c) => c.id === S.chanId);
   $('exportBtn').disabled = !S.last;
   const title = $('plotTitle');
   const group = chan && S.key ? groupOf(S.key) : null;
-  title.textContent = chan ? (group ? group.label : chan.source_id) : 'No response loaded';
+  title.textContent = chan ? (group ? group.label : chan.source_id) : (S.channels.length ? 'No response plotted' : 'No response loaded');
   if (chan && chan.origin) title.dataset.tip = chan.origin; else delete title.dataset.tip;
   if (chan) {
     const range = document.createElement('span');
     range.className = 'title-range';
     range.textContent = `${fmtDate(chan.start)} → ${fmtDate(chan.end)}`;
     title.appendChild(range);
+    const others = plottedGroups().length - 1;
+    if (others > 0) {
+      const more = document.createElement('span');
+      more.className = 'title-range';
+      more.textContent = `+ ${others} compared`;
+      title.appendChild(more);
+    }
   }
 
   const tbl = $('stageTable'), body = tbl.querySelector('tbody');
@@ -519,7 +623,7 @@ function drawEmpty() {
   $('plot').toggleAttribute('hidden', true); // SVG elements have no .hidden property
   $('placeholder').hidden = false;
   $('placeholder').textContent = S.chanId === null
-    ? 'Load a StationXML, RESP or SAC PZ file (or fetch one from an FDSN service), then pick a channel.'
+    ? (S.channels.length ? 'No response matches the filter.' : 'Load a StationXML, RESP or SAC PZ file (or fetch one from an FDSN service), then pick a channel.')
     : 'No response could be computed for these settings.';
 }
 
@@ -556,8 +660,9 @@ function pathFrom(points, fx, fy) {
 
 function drawBode() {
   layout();
-  const res = S.last;
-  if (!res) return drawEmpty();
+  const results = S.results;
+  if (!results.length) return drawEmpty();
+  const cur = results.find((r) => r.current) || null;
   const svg = $('plot');
   $('plot').toggleAttribute('hidden', false);
   $('placeholder').hidden = true;
@@ -565,31 +670,31 @@ function drawBode() {
   svg.setAttribute('viewBox', `0 0 ${W} ${H}`);
   el('rect', { x: 0, y: 0, width: W, height: H, class: 'plot-bg' }, svg);
 
-  const f = res.frequencies;
-  const xlog = S.request.frequencies.spacing === 'log' && f.every((v) => v > 0);
+  // ----- datasets (every response has its own frequency list)
+  const sets = results.map((r) => ({ name: results.length > 1 ? r.label : 'Total response', color: r.color, f: r.res.frequencies, amp: r.res.amplitude, ph: r.res.phase, main: true }));
+  if (results.length === 1 && results[0].res.stage_values) {
+    for (const [seq, v] of Object.entries(results[0].res.stage_values)) {
+      sets.push({ name: `Stage ${seq}`, color: stageColor(Number(seq)), f: results[0].res.frequencies, amp: v.amplitude, ph: v.phase });
+    }
+  }
+  const mains = sets.filter((s) => s.main);
+
+  const xlog = S.request.frequencies.spacing === 'log' && sets.every((s) => s.f.every((v) => v > 0));
   const tx = xlog ? Math.log10 : (v) => v;
-  let xlo = tx(Math.min(...f)), xhi = tx(Math.max(...f));
+  let xlo = tx(minOf(mains.map((s) => minOf(s.f)))), xhi = tx(maxOf(mains.map((s) => maxOf(s.f))));
   if (xlo === xhi) { xlo -= 0.5; xhi += 0.5; }
   const fx = (v) => M.l + (tx(v) - xlo) / (xhi - xlo) * PLOT_W;
 
-  // ----- datasets
-  const sets = [{ name: 'Total response', color: '--c1', amp: res.amplitude, ph: res.phase, main: true }];
-  if (res.stage_values) {
-    for (const [seq, v] of Object.entries(res.stage_values)) {
-      sets.push({ name: `Stage ${seq}`, color: stageColor(Number(seq)), amp: v.amplitude, ph: v.phase });
-    }
-  }
-
   // ----- amplitude axis (log)
   const positive = (a) => a.filter((v) => v !== null && v > 0 && isFinite(v));
-  let ampAll = positive(sets[0].amp);
+  let ampAll = mains.flatMap((s) => positive(s.amp));
   if (!ampAll.length) ampAll = [1];
-  let lo = Math.min(...ampAll), hi = Math.max(...ampAll);
-  for (const s of sets.slice(1)) { // include stages, but do not let outliers swamp the total
+  let lo = minOf(ampAll), hi = maxOf(ampAll);
+  for (const s of sets.filter((x) => !x.main)) { // include stages, but do not let outliers swamp the total
     const p = positive(s.amp);
-    if (p.length) { lo = Math.min(lo, Math.min(...p)); hi = Math.max(hi, Math.max(...p)); }
+    if (p.length) { lo = Math.min(lo, minOf(p)); hi = Math.max(hi, maxOf(p)); }
   }
-  const mainLo = Math.min(...ampAll), mainHi = Math.max(...ampAll);
+  const mainLo = minOf(ampAll), mainHi = maxOf(ampAll);
   if (Math.log10(hi / lo) > 18) { lo = mainLo / 1e3; hi = mainHi * 1e3; }
   let ylo = Math.floor(Math.log10(lo)), yhi = Math.ceil(Math.log10(hi));
   if (yhi - ylo < 1) { ylo -= 0; yhi = ylo + 1; }
@@ -599,7 +704,7 @@ function drawBode() {
   const allPh = sets.flatMap((s) => s.ph.filter((v) => v !== null && isFinite(v)));
   let plo = -180, phi = 180;
   if ($('unwrap').checked && allPh.length) {
-    plo = Math.floor(Math.min(...allPh) / 90) * 90; phi = Math.ceil(Math.max(...allPh) / 90) * 90;
+    plo = Math.floor(minOf(allPh) / 90) * 90; phi = Math.ceil(maxOf(allPh) / 90) * 90;
     if (phi - plo < 90) phi = plo + 90;
   }
   const phTop = M.t + AMP_H + GAP;
@@ -638,7 +743,7 @@ function drawBode() {
   el('rect', { x: M.l, y: M.t, width: PLOT_W, height: AMP_H, class: 'axis-line' }, svg);
   el('rect', { x: M.l, y: phTop, width: PLOT_W, height: PH_H, class: 'axis-line' }, svg);
 
-  const unitLabel = { vel: 'Amplitude (counts per m/s)', dis: 'Amplitude (counts per m)', acc: 'Amplitude (counts per m/s²)', def: 'Amplitude' }[res.unit] || 'Amplitude';
+  const unitLabel = { vel: 'Amplitude (counts per m/s)', dis: 'Amplitude (counts per m)', acc: 'Amplitude (counts per m/s²)', def: 'Amplitude' }[results[0].res.unit] || 'Amplitude';
   const yt = el('text', { transform: `translate(16 ${M.t + AMP_H / 2}) rotate(-90)`, 'text-anchor': 'middle', class: 'axis-title' }, svg);
   yt.textContent = unitLabel;
   const pt = el('text', { transform: `translate(16 ${phTop + PH_H / 2}) rotate(-90)`, 'text-anchor': 'middle', class: 'axis-title' }, svg);
@@ -654,27 +759,41 @@ function drawBode() {
   }
   const gA = el('g', { 'clip-path': 'url(#clipA)' }, svg);
   const gP = el('g', { 'clip-path': 'url(#clipP)' }, svg);
-  // reference lines: sensitivity gain / frequency and Nyquist
+  // reference lines: sensitivity gain / frequency and Nyquist, per response; labels are nudged apart
   if ($('showRefs').checked) {
-    const info = res.info;
-    const sens = info.reported_sensitivity > 0 ? info.reported_sensitivity : info.calculated_sensitivity;
-    const label = (parent, x, y, text, anchor) => { const t = el('text', { x, y, 'text-anchor': anchor, class: 'ref-label' }, parent); t.textContent = text; };
-    if (sens > 0 && Math.log10(sens) >= ylo && Math.log10(sens) <= yhi) {
-      const y = ay(sens);
-      el('line', { x1: M.l, x2: M.l + PLOT_W, y1: y, y2: y, class: 'ref-line' }, gA);
-      label(gA, M.l + 8, y + 15, `sens gain: ${fmtNum(sens, 6)}`, 'start');
-    }
-    const vlines = [
-      [info.sensitivity_frequency, `sens freq ${fmtNum(info.sensitivity_frequency)} Hz`],
-      [channelNyquist(S.channels.find((c) => c.id === S.chanId)), null],
-    ];
-    vlines[1][1] = vlines[1][0] ? `nyquist: ${fmtNum(vlines[1][0])} Hz` : null;
-    for (const [v, text] of vlines) {
-      if (!(v > 0) || (xlog && v <= 0) || tx(v) < xlo || tx(v) > xhi) continue;
-      const x = fx(v);
-      for (const [g, y0, h] of [[gA, M.t, AMP_H], [gP, phTop, PH_H]]) {
-        el('line', { x1: x, x2: x, y1: y0, y2: y0 + h, class: 'ref-line' }, g);
-        label(g, x - 4, y0 + h - 8, text, 'end');
+    const multi = results.length > 1;
+    const placed = new Map([[gA, []], [gP, []]]);
+    const label = (parent, x, y, text, anchor, dir, color) => {
+      const t = el('text', { x, y, 'text-anchor': anchor, class: 'ref-label' }, parent);
+      if (multi) t.setAttribute('style', `fill:var(${color})`);
+      t.textContent = text;
+      const boxes = placed.get(parent);
+      const hit = () => { const b = t.getBBox(); return boxes.some((o) => b.x < o.x + o.width && b.x + b.width > o.x && b.y < o.y + o.height && b.y + b.height > o.y); };
+      for (let tries = 0, yy = y; hit() && tries < 8; tries++) { yy += dir * 13; t.setAttribute('y', yy); }
+      boxes.push(t.getBBox());
+    };
+    for (const r of results) {
+      const info = r.res.info;
+      const lineStyle = multi ? `stroke:var(${r.color})` : null;
+      const line = (parent, attrs) => { const l = el('line', { ...attrs, class: 'ref-line' }, parent); if (lineStyle) l.setAttribute('style', lineStyle); };
+      const sens = info.reported_sensitivity > 0 ? info.reported_sensitivity : info.calculated_sensitivity;
+      if (sens > 0 && Math.log10(sens) >= ylo && Math.log10(sens) <= yhi) {
+        const y = ay(sens);
+        line(gA, { x1: M.l, x2: M.l + PLOT_W, y1: y, y2: y });
+        label(gA, M.l + 8, y + 15, `sens gain: ${fmtNum(sens, 6)}`, 'start', 1, r.color);
+      }
+      const nyquist = channelNyquist(S.channels.find((c) => c.id === r.chanId));
+      const vlines = [
+        [info.sensitivity_frequency, `sens freq ${fmtNum(info.sensitivity_frequency)} Hz`],
+        [nyquist, nyquist ? `nyquist: ${fmtNum(nyquist)} Hz` : null],
+      ];
+      for (const [v, text] of vlines) {
+        if (!(v > 0) || (xlog && v <= 0) || tx(v) < xlo || tx(v) > xhi) continue;
+        const x = fx(v);
+        for (const [g, y0, h] of [[gA, M.t, AMP_H], [gP, phTop, PH_H]]) {
+          line(g, { x1: x, x2: x, y1: y0, y2: y0 + h });
+          label(g, x - 4, y0 + h - 8, text, 'end', -1, r.color);
+        }
       }
     }
   }
@@ -682,16 +801,17 @@ function drawBode() {
   for (const s of sets.slice().reverse()) {
     const style = `stroke:var(${s.color})`;
     const cls = 'curve' + (s.main ? '' : ' stage');
-    const ampPts = finitePairs(f, s.amp.map((v) => (v !== null && v > 0 ? v : null)));
+    const ampPts = finitePairs(s.f, s.amp.map((v) => (v !== null && v > 0 ? v : null)));
+    const phPts = finitePairs(s.f, s.ph);
     el('path', { d: pathFrom(ampPts, fx, ay), class: cls, style }, gA);
-    el('path', { d: pathFrom(finitePairs(f, s.ph), fx, py), class: cls, style }, gP);
+    el('path', { d: pathFrom(phPts, fx, py), class: cls, style }, gP);
     if ($('showPoints').checked) {
       const r = s.main ? 3.5 : 2.5; // unfilled circles, so the curve stays visible through each symbol
       const dots = (pts, fy) => pts.filter(Boolean).map((p) =>
         `M${(fx(p[0]) - r).toFixed(2)} ${fy(p[1]).toFixed(2)}a${r} ${r} 0 1 0 ${2 * r} 0a${r} ${r} 0 1 0 ${-2 * r} 0`).join('');
       const pcls = 'points' + (s.main ? '' : ' stage');
       el('path', { d: dots(ampPts, ay), class: pcls, style }, gA);
-      el('path', { d: dots(finitePairs(f, s.ph), py), class: pcls, style }, gP);
+      el('path', { d: dots(phPts, py), class: pcls, style }, gP);
     }
   }
 
@@ -704,13 +824,19 @@ function drawBode() {
   const perCol = Math.max(1, Math.min(sets.length, Math.floor((PH_H * 0.6 - 2 * pad) / rowH)));
   const lgBox = el('rect', { class: 'legend-box', rx: 4 }, svg);
   const lgG = el('g', {}, svg);
-  sets.forEach((s, i) => {
-    const col = Math.floor(i / perCol), row = i % perCol;
-    const x = col * 120, y = row * rowH;
-    el('line', { x1: x, x2: x + swatch, y1: y + rowH / 2, y2: y + rowH / 2, class: 'curve' + (s.main ? '' : ' stage'), style: `stroke:var(${s.color})` }, lgG);
-    const t = el('text', { x: x + swatch + 5, y: y + rowH / 2 + 4, class: 'legend-text' }, lgG);
+  const entries = sets.map((s, i) => {
+    const line = el('line', { class: 'curve' + (s.main ? '' : ' stage'), style: `stroke:var(${s.color})` }, lgG);
+    const t = el('text', { class: 'legend-text' }, lgG);
     t.textContent = s.name;
+    return { line, t, col: Math.floor(i / perCol), row: i % perCol };
   });
+  const colW = swatch + 5 + maxOf(entries.map((e) => e.t.getComputedTextLength())) + 16;
+  for (const e of entries) {
+    const x = e.col * colW, y = e.row * rowH;
+    e.line.setAttribute('x1', x); e.line.setAttribute('x2', x + swatch);
+    e.line.setAttribute('y1', y + rowH / 2); e.line.setAttribute('y2', y + rowH / 2);
+    e.t.setAttribute('x', x + swatch + 5); e.t.setAttribute('y', y + rowH / 2 + 4);
+  }
   const bb = lgG.getBBox();
   const bw = bb.width + 2 * pad, bh = bb.height + 2 * pad;
   const bx = M.l + 8, by = phTop + PH_H - 8 - bh;
@@ -723,15 +849,30 @@ function drawBode() {
     const x = (ev.clientX - r.left) * (W / r.width);
     if (x < M.l || x > M.l + PLOT_W) return onLeave();
     const target = xlo + (x - M.l) / PLOT_W * (xhi - xlo);
-    let best = 0, bd = Infinity;
-    f.forEach((v, i) => { const d = Math.abs(tx(v) - target); if (d < bd) { bd = d; best = i; } });
-    const cx = fx(f[best]);
+    const nearest = (fr) => {
+      let best = 0, bd = Infinity;
+      fr.forEach((v, i) => { const d = Math.abs(tx(v) - target); if (d < bd) { bd = d; best = i; } });
+      return best;
+    };
+    const lead = results[0].res;
+    const cx = fx(lead.frequencies[nearest(lead.frequencies)]);
     for (const c of [cursorA, cursorP]) { c.setAttribute('x1', cx); c.setAttribute('x2', cx); c.setAttribute('visibility', 'visible'); }
     tip.hidden = false;
-    tip.innerHTML = `f ${fmtNum(f[best], 5)} Hz<br>|H| ${fmtNum(res.amplitude[best], 5)}<br>φ ${fmtNum(res.phase[best], 5)}°`;
+    if (results.length === 1) {
+      const i = nearest(lead.frequencies);
+      tip.innerHTML = `f ${fmtNum(lead.frequencies[i], 5)} Hz<br>|H| ${fmtNum(lead.amplitude[i], 5)}<br>φ ${fmtNum(lead.phase[i], 5)}°`;
+    } else {
+      const fHead = lead.frequencies[nearest(lead.frequencies)];
+      tip.innerHTML = `f ${fmtNum(fHead, 5)} Hz` + results.map((r) => {
+        const i = nearest(r.res.frequencies), fr = r.res.frequencies[i];
+        const at = Math.abs(fr - fHead) > 1e-9 * Math.abs(fHead) ? ` @ ${fmtNum(fr, 5)} Hz` : '';
+        return `<br><span class="sw" style="background:var(${r.color})"></span>${esc(r.label)}${at}: |H| ${fmtNum(r.res.amplitude[i], 5)}, φ ${fmtNum(r.res.phase[i], 5)}°`;
+      }).join('');
+    }
     const wr = $('plotWrap').getBoundingClientRect();
+    const tw = tip.offsetWidth;
     let left = ev.clientX - wr.left + 14;
-    if (left + 130 > wr.width) left = ev.clientX - wr.left - 140;
+    if (left + tw + 4 > wr.width) left = Math.max(0, ev.clientX - wr.left - tw - 14);
     tip.style.left = left + 'px';
     tip.style.top = Math.max(0, ev.clientY - wr.top - 20) + 'px';
   };
@@ -760,7 +901,7 @@ async function standaloneSvg() {
 
 async function doExport(kind) {
   const chan = S.channels.find((c) => c.id === S.chanId);
-  const base = chan ? chan.nslc : 'response';
+  const base = S.results.length > 1 ? 'responses' : chan ? chan.nslc : 'response';
   if (kind === 'svg') {
     return download(`${base}.svg`, new Blob([await standaloneSvg()], { type: 'image/svg+xml' }));
   }
@@ -856,7 +997,22 @@ function wire() {
   $('clearBtn').onclick = clearResponses;
 
   $('sidFilter').oninput = debounce(() => renderSidList(), 150);
-  $('sidSelect').onchange = () => { S.key = $('sidSelect').value; renderEpochs(); };
+  $('sidList').addEventListener('change', (e) => { if (e.target.dataset.key) onTick(e.target.dataset.key, e.target.checked); });
+  $('sidList').addEventListener('click', (e) => {
+    const row = e.target.closest('.sid-row');
+    if (!row || e.target.tagName === 'INPUT' || row.dataset.key === S.key) return;
+    setCurrent(row.dataset.key);
+  });
+  $('sidList').addEventListener('keydown', (e) => {
+    const step = e.key === 'ArrowDown' ? 1 : e.key === 'ArrowUp' ? -1 : 0;
+    if (!step || e.target.tagName === 'INPUT') return;
+    const groups = visibleGroups();
+    const next = groups[groups.findIndex((g) => g.key === S.key) + step];
+    if (!next) return;
+    e.preventDefault();
+    setCurrent(next.key);
+    focusRow(next.key, false);
+  });
   $('timeInput').onchange = chooseEpochByTime;
   $('nowBtn').onclick = () => { $('timeInput').value = fmtTimeField(new Date()); chooseEpochByTime(); };
   $('epochSelect').onchange = onEpochPicked;

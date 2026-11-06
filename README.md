@@ -86,7 +86,8 @@ The browser version of each release is published to GitHub Pages at
 Load files by dropping them on the page, enter a file URL, or fetch from an FDSN station web service. Choose
 an FDSN Source ID and a point in time (the epoch containing it is chosen as in evalresp), then set the
 frequency range, output unit and options, and tick the stages to include in the stage table. The plot shows
-amplitude and phase with a hover read-out; individual stages can be overlaid; results export as evalresp text
+amplitude and phase with a hover read-out; individual stages can be overlaid; tick several loaded responses to
+overlay them for comparison; results export as evalresp text
 (FAP, AP, complex), SVG or PNG.
 
 A link can open the page with files already loaded using the `url` parameter (repeatable, percent-encoded),
