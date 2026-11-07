@@ -4,8 +4,9 @@
 Runs the C program and this package on the same inputs across a matrix of
 options and reports any differences beyond print precision.  Developer tool:
 
-    python tools/compare_evalresp.py [--jobs N] /path/to/evalresp/src/evalresp FILE [FILE ...]
+    python tools/compare_evalresp.py [--jobs N] /path/to/evalresp/src/evalresp PATH [PATH ...]
 
+A PATH is a response file or a directory; a directory means every file beneath it.
 Each channel epoch of each file is tested at a time inside the epoch.  StationXML
 files are given to evalresp as they are; it detects the format itself.
 
@@ -20,6 +21,7 @@ to 5 and coefficients to 6 significant digits, which a direct XML read does not.
 import argparse
 import os
 import re
+import signal
 import subprocess
 import sys
 import tempfile
@@ -157,6 +159,19 @@ def _workdir(root):
     return str(path)
 
 
+def _expand(paths):
+    """Files named by paths; a directory contributes every file beneath it, in sorted order."""
+    for path in paths:
+        if os.path.isdir(path):
+            for dirpath, dirnames, filenames in os.walk(path):
+                dirnames[:] = sorted(d for d in dirnames if not d.startswith("."))
+                for name in sorted(filenames):
+                    if not name.startswith("."):
+                        yield os.path.join(dirpath, name)
+        else:
+            yield path
+
+
 def _source(file, xml2resp, workdir):
     """The Source for a file, prepared once per process."""
     key = (str(file), xml2resp)
@@ -210,9 +225,15 @@ def check_channel(task):
     return stats, lines
 
 
+def _ignore_sigint():
+    """Worker initializer: only the parent handles Ctrl-C."""
+    signal.signal(signal.SIGINT, signal.SIG_IGN)
+
+
 def _run_tasks(fn, tasks, jobs, stats):
     """Run tasks (in parallel when jobs > 1); print each task's lines in task order
-    and add its counts to ``stats``."""
+    and add its counts to ``stats``.  Pending tasks are dropped on interrupt;
+    running ones finish."""
     def collect(results):
         for delta, lines in results:
             for line in lines:
@@ -223,14 +244,17 @@ def _run_tasks(fn, tasks, jobs, stats):
     if jobs == 1:
         collect(map(fn, tasks))
     else:
-        with ProcessPoolExecutor(max_workers=jobs) as pool:
+        pool = ProcessPoolExecutor(max_workers=jobs, initializer=_ignore_sigint)
+        try:
             collect(pool.map(fn, tasks))
+        finally:
+            pool.shutdown(wait=True, cancel_futures=True)
 
 
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("binary")
-    ap.add_argument("files", nargs="+")
+    ap.add_argument("files", nargs="+", metavar="PATH", help="response file, or directory searched recursively")
     ap.add_argument("--rtol", type=float, default=2e-6)
     ap.add_argument("-v", action="store_true")
     ap.add_argument("--formats", action="store_true", help="compare FAP/AP text output instead of complex spectra")
@@ -249,13 +273,14 @@ def main():
         xml2resp = args.xml2resp or str(Path(args.binary).parent / "xml2resp")
         if not (os.path.isfile(xml2resp) and os.access(xml2resp, os.X_OK)):
             ap.error(f"xml2resp not found or not executable: {xml2resp}")
+    files = list(_expand(args.files))
     if args.formats:
-        return format_main(args.binary, args.files, xml2resp, args.jobs)
+        return format_main(args.binary, files, xml2resp, args.jobs)
 
     stats = dict(ok=0, bad=0, both_error=0, only_c_error=0, only_py_error=0)
     with tempfile.TemporaryDirectory() as root:
         tasks = []
-        for file in args.files:
+        for file in files:
             try:
                 source = _source(file, xml2resp, _workdir(root))
             except SeismicResponseError as exc:
@@ -378,4 +403,8 @@ def format_main(binary, files, xml2resp=None, jobs=1):
 
 
 if __name__ == "__main__":
-    sys.exit(main())
+    try:
+        sys.exit(main())
+    except KeyboardInterrupt:
+        print("\ninterrupted", file=sys.stderr)
+        sys.exit(130)
