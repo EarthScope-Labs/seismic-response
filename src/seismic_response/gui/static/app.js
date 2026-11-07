@@ -33,10 +33,17 @@ const backend = {
 
   async call(fn, ...args) {
     if (this.kind === 'http') {
-      const r = await fetch('api/' + fn, {
-        method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(args),
-      });
+      let r;
+      try {
+        r = await fetch('api/' + fn, {
+          method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(args),
+        });
+      } catch (e) { // network failure: the local server has gone away
+        setBadge('local Python: not responding');
+        throw Object.assign(new Error('The local seismic-response server is not responding. Restart it and load the responses again.'), { offline: true });
+      }
       if (!r.ok) throw new Error('Server error ' + r.status);
+      setBadge('local Python', true);
       return JSON.parse(await r.text());
     }
     return JSON.parse(this.api.call(fn, ...args));
@@ -500,16 +507,20 @@ const recompute = debounce(async () => {
     const item = { chanId: p.chan.id, label: p.label, color: plotColor(i), current };
     const r = { ...req, channel: item.chanId, per_stage: req.per_stage && single && current, exclude_stages: current ? req.exclude_stages : [] };
     try { item.res = await backend.call('evaluate', JSON.stringify(r)); }
-    catch (e) { item.res = { ok: false, error: e.message }; }
+    catch (e) { item.res = { ok: false, error: e.message, offline: e.offline }; }
     return item;
   }));
   if (mine !== S.seq) return; // a newer request superseded this one
 
   $('alerts').innerHTML = '';
   const multi = out.length > 1;
+  let offlineShown = false;
   for (const o of out) {
     const prefix = multi ? o.label + ': ' : '';
-    if (!o.res.ok) showAlert('error', prefix + o.res.error);
+    if (o.res.offline) {
+      if (!offlineShown) showAlert('error', o.res.error);
+      offlineShown = true;
+    } else if (!o.res.ok) showAlert('error', prefix + o.res.error);
     else for (const w of o.res.warnings || []) showAlert('warn', prefix + w);
   }
   S.results = out.filter((o) => o.res.ok);
