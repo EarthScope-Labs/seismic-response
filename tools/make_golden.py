@@ -27,7 +27,7 @@ def main():
         for path in fixtures:
             if path.name.endswith(".xml2resp.resp"):
                 continue  # derived from the XML fixture; used for the structure test only
-            source = ce.Source(str(path), binary)
+            source = ce.Source(path)
             for index, chan in enumerate(source.channels):
                 end = chan.end_time or (chan.start_time + timedelta(days=400))
                 when = (chan.start_time + min((end - chan.start_time) / 2, timedelta(days=60))).replace(microsecond=0)

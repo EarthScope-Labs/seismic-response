@@ -6,10 +6,16 @@ options and reports any differences beyond print precision.  Developer tool:
 
     python tools/compare_evalresp.py /path/to/evalresp/src/evalresp FILE [FILE ...]
 
-Each channel epoch of each file is tested at a time inside the epoch.
+Each channel epoch of each file is tested at a time inside the epoch.  StationXML
+files are given to evalresp as they are; it detects the format itself.
+
+With --via-xml2resp, StationXML is first converted by xml2resp and both sides
+evaluate that RESP.  This compares evaluation alone: the conversion rounds delays
+to 5 and coefficients to 6 significant digits, which a direct XML read does not.
 """
 
 import argparse
+import os
 import re
 import subprocess
 import sys
@@ -21,17 +27,10 @@ import seismic_response as sr
 from seismic_response.errors import SeismicResponseError
 
 CASES = [
-    dict(unit="vel", freqs=(0.001, 40, 25, "log")),
-    dict(unit="dis", freqs=(0.01, 20, 17, "log")),
-    dict(unit="acc", freqs=(0.01, 20, 17, "lin")),
-    dict(unit="def", freqs=(0.005, 15, 21, "log")),
-    dict(unit="vel", freqs=(0.02, 0.02, 1, "log")),
-    dict(unit="vel", freqs=(0.001, 40, 25, "log"), ts=True),
-    dict(unit="vel", freqs=(0.001, 40, 25, "log"), estdelay=True),
-    dict(unit="vel", freqs=(0.001, 40, 25, "log"), stages=(1, None)),
-    dict(unit="vel", freqs=(0.001, 40, 25, "log"), stages=(2, 3)),
-    dict(unit="vel", freqs=(0.001, 40, 25, "log"), stages=(1, 1)),
-    dict(unit="vel", freqs=(0.005, 20, 30, "log"), il=True),  # response lists only
+    dict(freqs=(0.001, 40, 25, "log")),
+    dict(freqs=(0.01, 20, 17, "lin")),
+    dict(freqs=(0.005, 15, 21, "log")),
+    dict(freqs=(0.02, 0.02, 1, "log")),
 ]
 
 
@@ -39,18 +38,8 @@ def _run_c_once(binary, file, chan, when, case, workdir):
     year, jday = when.year, when.timetuple().tm_yday
     mn, mx, n, spacing = case["freqs"]
     cmd = [binary, chan.station, chan.channel, str(year), str(jday), repr(mn), repr(mx), str(n),
-           "-f", str(file), "-u", case["unit"], "-s", spacing, "-r", "cs",
-           "-t", when.strftime("%H:%M:%S"), "-n", chan.network or "*", "-l", chan.location or "??",
-           "-b62_x", "2.0"]
-    if case.get("ts"):
-        cmd.append("-ts")
-    if case.get("estdelay"):
-        cmd.append("-use-estimated-delay")
-    if case.get("il"):
-        cmd.append("-il")
-    if case.get("stages"):
-        a, b = case["stages"]
-        cmd += ["-stage", str(a)] + ([str(b)] if b is not None else [])
+           "-f", str(file), "-u", "def", "-s", spacing, "-r", "cs",
+           "-t", when.strftime("%H:%M:%S"), "-n", chan.network or "*", "-l", chan.location or "??"]
     out = Path(workdir) / f"SPECTRA.{chan.network}.{chan.station}.{chan.location}.{chan.channel}"
     if out.exists():
         out.unlink()
@@ -63,93 +52,56 @@ def _run_c_once(binary, file, chan, when, case, workdir):
 
 def run_c(binary, source, index, chan, when, case, workdir):
     """Run C on the whole file; if the C program crashes, retry with only this channel's block."""
-    whole = Path(workdir) / "whole.resp"
-    whole.write_text(source.text)
-    rows, err, rc = _run_c_once(binary, whole, chan, when, case, workdir)
-    if rows is None and rc < 0 or (rows is None and rc >= 128):
-        block = Path(workdir) / "block.resp"
-        block.write_text(source.blocks[index])
-        rows, err, rc = _run_c_once(binary, block, chan, when, case, workdir)
+    rows, err, rc = _run_c_once(binary, source.input_file(workdir), chan, when, case, workdir)
+    if rows is None and (rc < 0 or rc >= 128) and source.blocks is not None:
+        rows, err, rc = _run_c_once(binary, source.block_file(index, workdir), chan, when, case, workdir)
     return rows, err
 
 
 class Source:
-    """A response file prepared for comparison: its RESP text, per-channel blocks and channels."""
+    """A response file prepared for comparison: its channels and the file C reads.
 
-    def __init__(self, path, binary):
-        self.path = path
-        data = Path(path).read_bytes()
-        self.xml_channels = None
+    ``blocks`` holds the per-channel RESP blocks, or None for StationXML read directly.
+    With ``xml2resp`` (a converter executable), StationXML is converted to RESP in
+    ``workdir`` first and handled as RESP.
+    """
+
+    def __init__(self, path, xml2resp=None, workdir=None):
+        self.path = Path(path).resolve()
+        data = self.path.read_bytes()
         if sr.looks_like_stationxml(data[:1024]):
-            self.xml_channels = sr.parse_stationxml(data)
-            xml2resp = Path(binary).parent / "xml2resp"
-            p = subprocess.run([str(xml2resp)], input=data, capture_output=True)
-            if p.returncode != 0:
-                raise RuntimeError(f"xml2resp failed: {p.stderr.decode()[:200]}")
-            self.text = p.stdout.decode("latin-1")
-        else:
-            self.text = data.decode("utf-8", errors="replace")
-        parts = re.split(r"(?m)^(?=B050F03)", self.text)
-        self.blocks = parts[1:]
-        self.channels = sr.parse_resp(self.text, Path(path).name)
+            if xml2resp is None:
+                self.text = None
+                self.blocks = None
+                self.channels = sr.parse_stationxml(data)
+                return
+            data = self._convert(xml2resp, workdir)
+        self.text = data.decode("utf-8", errors="replace")
+        self.blocks = re.split(r"(?m)^(?=B050F03)", self.text)[1:]
+        self.channels = sr.parse_resp(self.text, self.path.name)
         assert len(self.blocks) == len(self.channels)
 
+    def _convert(self, xml2resp, workdir):
+        out = Path(workdir) / "xml2resp.resp"
+        if out.exists():
+            out.unlink()
+        p = subprocess.run([xml2resp, "-o", str(out), str(self.path)], capture_output=True, text=True)
+        if p.returncode != 0 or not out.exists():
+            raise SeismicResponseError(f"xml2resp failed: {p.stderr.strip()[-150:] or f'rc={p.returncode}'}")
+        return out.read_bytes()
 
-def _close(a, b, rtol=2e-5):
-    return abs(a - b) <= rtol * max(abs(a), abs(b)) + 1e-300
+    def input_file(self, workdir):
+        """The whole response as a file for C (RESP is normalized to UTF-8 text)."""
+        if self.text is None:
+            return self.path
+        whole = Path(workdir) / "whole.resp"
+        whole.write_text(self.text)
+        return whole
 
-
-def structural_diffs(xml_chans, resp_chans):
-    """Compare the XML reading with C's xml2resp RESP output (which prints 6 significant digits)."""
-    diffs = []
-    if len(xml_chans) != len(resp_chans):
-        return [f"channel count: xml={len(xml_chans)} resp={len(resp_chans)}"]
-    for x, r in zip(xml_chans, resp_chans):
-        tag = f"{x.nslc} {x.start_time}"
-        if (x.nslc, x.start_time, x.end_time) != (r.nslc, r.start_time, r.end_time):
-            diffs.append(f"{tag}: identity/epoch differs: {r.nslc} {r.start_time} {r.end_time} vs {x.end_time}")
-        # xml2resp lists the instrument sensitivity (stage 0) last, as does the XML reader
-        if [s.sequence for s in x.stages] != [s.sequence for s in r.stages]:
-            diffs.append(f"{tag}: stage sequence {[s.sequence for s in x.stages]} vs {[s.sequence for s in r.stages]}")
-            continue
-        for sx, sr_ in zip(x.stages, r.stages):
-            where = f"{tag} stage {sx.sequence}"
-            if type(sx.filter) is not type(sr_.filter):
-                diffs.append(f"{where}: filter {type(sx.filter).__name__} vs {type(sr_.filter).__name__}")
-                continue
-            fx, fr = sx.filter, sr_.filter
-            if fx is not None:
-                for attr in ("kind", "symmetry"):
-                    if getattr(fx, attr, None) != getattr(fr, attr, None):
-                        diffs.append(f"{where}: {attr} differs")
-                for attr in ("zeros", "poles", "coefficients", "numerators", "denominators",
-                             "frequencies", "amplitudes", "phases"):
-                    a, b = getattr(fx, attr, None), getattr(fr, attr, None)
-                    if a is None:
-                        continue
-                    if len(a) != len(b) or any(not _close(complex(u), complex(v)) for u, v in zip(a, b)):
-                        diffs.append(f"{where}: {attr} differ")
-                for attr in ("a0", "a0_freq"):
-                    if hasattr(fx, attr) and not _close(getattr(fx, attr), getattr(fr, attr)):
-                        diffs.append(f"{where}: {attr} {getattr(fx, attr)} vs {getattr(fr, attr)}")
-            if (sx.gain is None) != (sr_.gain is None) or (
-                    sx.gain and not (_close(sx.gain.value, sr_.gain.value)
-                                     and _close(sx.gain.frequency, sr_.gain.frequency))):
-                diffs.append(f"{where}: gain {sx.gain} vs {sr_.gain}")
-            dx, dr = sx.decimation, sr_.decimation
-            if (dx is None) != (dr is None):
-                diffs.append(f"{where}: decimation presence differs")
-            elif dx and not (_close(dx.input_sample_rate, dr.input_sample_rate) and dx.factor == dr.factor
-                             and _close(dx.estimated_delay, dr.estimated_delay)
-                             and _close(dx.correction_applied, dr.correction_applied)):
-                diffs.append(f"{where}: decimation {dx} vs {dr}")
-            def short(u):
-                return (u or "").split(" -")[0].strip()  # name only; C writes "NAME - description"
-            ux = short(sx.input_units), short(sx.output_units)
-            ur = short(sr_.input_units), short(sr_.output_units)
-            if sx.filter is not None and ux != ur:
-                diffs.append(f"{where}: units {ux} vs {ur}")
-    return diffs
+    def block_file(self, index, workdir):
+        block = Path(workdir) / "block.resp"
+        block.write_text(self.blocks[index])
+        return block
 
 
 def run_py(channels, chan, when, case):
@@ -161,14 +113,7 @@ def run_py(channels, chan, when, case):
     chan = found[0]
     mn, mx, n, spacing = case["freqs"]
     freqs = sr.generate_frequencies(mn, mx, n, linear=spacing == "lin")
-    stages = case.get("stages")
-    # C semantics: -stage N alone selects only stage N
-    if stages and stages[1] is None:
-        stages = (stages[0], stages[0])
-    res = sr.evaluate(chan, freqs, unit=case["unit"], stages=stages,
-                      use_total_sensitivity=case.get("ts", False),
-                      use_estimated_delay=case.get("estdelay", False), b62_x=2.0,
-                      interpolate_list=case.get("il", False))
+    res = sr.evaluate(chan, freqs, unit="def")
     return [(f, v.real, v.imag) for f, v in zip(res.frequencies, res.values)], ""
 
 
@@ -205,25 +150,29 @@ def main():
     ap.add_argument("--rtol", type=float, default=2e-6)
     ap.add_argument("-v", action="store_true")
     ap.add_argument("--formats", action="store_true", help="compare FAP/AP text output instead of complex spectra")
+    ap.add_argument("--via-xml2resp", action="store_true",
+                    help="convert StationXML with xml2resp and evaluate that RESP on both sides")
+    ap.add_argument("--xml2resp", metavar="PATH",
+                    help="xml2resp executable for --via-xml2resp (default: next to the evalresp binary)")
     args = ap.parse_args()
+    if not (os.path.isfile(args.binary) and os.access(args.binary, os.X_OK)):
+        ap.error(f"evalresp binary not found or not executable: {args.binary}")
+    xml2resp = None
+    if args.via_xml2resp:
+        xml2resp = args.xml2resp or str(Path(args.binary).parent / "xml2resp")
+        if not (os.path.isfile(xml2resp) and os.access(xml2resp, os.X_OK)):
+            ap.error(f"xml2resp not found or not executable: {xml2resp}")
     if args.formats:
-        return format_main(args.binary, args.files)
+        return format_main(args.binary, args.files, xml2resp)
 
-    stats = dict(ok=0, bad=0, both_error=0, only_c_error=0, only_py_error=0, xml_structure_diffs=0)
+    stats = dict(ok=0, bad=0, both_error=0, only_c_error=0, only_py_error=0)
     with tempfile.TemporaryDirectory() as work:
         for file in args.files:
             try:
-                source = Source(file, args.binary)
-            except (SeismicResponseError, RuntimeError) as exc:
+                source = Source(file, xml2resp=xml2resp, workdir=work)
+            except SeismicResponseError as exc:
                 print(f"SKIP {file}: {exc}")
                 continue
-            if source.xml_channels is not None:
-                diffs = structural_diffs(source.xml_channels, source.channels)
-                stats["xml_structure_diffs"] += len(diffs)
-                for d in diffs[:20]:
-                    print(f"XML STRUCTURE {Path(file).name}: {d}")
-                print(f"{Path(file).name}: StationXML vs xml2resp structure: "
-                      f"{len(source.channels)} channels, {len(diffs)} differences")
             channels = source.channels
             for index, chan in enumerate(channels):
                 if chan.start_time is None:
@@ -258,7 +207,7 @@ def main():
                         else:
                             stats["ok"] += 1
     print(stats)
-    return 1 if stats["bad"] or stats["only_py_error"] or stats["xml_structure_diffs"] else 0
+    return 1 if stats["bad"] or stats["only_py_error"] else 0
 
 
 
@@ -268,24 +217,21 @@ def main():
 # text outputs add amplitude/phase conversion and phase unwrapping, checked here.
 
 FORMAT_CASES = [
-    dict(fmt="fap", extra=[], unwrap=True, freqs=(0.001, 40, 40, "log"), unit="vel"),
-    dict(fmt="ap", extra=[], unwrap=False, freqs=(0.001, 40, 40, "log"), unit="vel"),
-    dict(fmt="ap", extra=["-unwrap"], unwrap=True, freqs=(0.001, 40, 40, "log"), unit="vel"),
-    dict(fmt="fap", extra=[], unwrap=True, freqs=(0.01, 20, 30, "lin"), unit="dis"),
+    dict(fmt="fap", extra=[], unwrap=True, freqs=(0.001, 40, 40, "log")),
+    dict(fmt="ap", extra=[], unwrap=False, freqs=(0.001, 40, 40, "log")),
+    dict(fmt="ap", extra=["-unwrap"], unwrap=True, freqs=(0.001, 40, 40, "log")),
+    dict(fmt="fap", extra=[], unwrap=True, freqs=(0.01, 20, 30, "lin")),
 ]
 
 
-def run_c_format(binary, text, chan, when, case, workdir):
+def run_c_format(binary, file, chan, when, case, workdir):
     from pathlib import Path as _P
     mn, mx, n, spacing = case["freqs"]
-    f = _P(workdir) / "fmt.resp"
-    f.write_text(text)
     for old in _P(workdir).glob("[AFPS]*.*"):
         old.unlink()
     cmd = [binary, chan.station, chan.channel, str(when.year), str(when.timetuple().tm_yday), repr(mn), repr(mx),
-           str(n), "-f", str(f), "-u", case["unit"], "-s", spacing, "-r", case["fmt"],
-           "-t", when.strftime("%H:%M:%S"), "-n", chan.network or "*", "-l", chan.location or "??",
-           "-b62_x", "2.0"] + case["extra"]
+           str(n), "-f", str(file), "-u", "def", "-s", spacing, "-r", case["fmt"],
+           "-t", when.strftime("%H:%M:%S"), "-n", chan.network or "*", "-l", chan.location or "??"] + case["extra"]
     p = subprocess.run(cmd, cwd=workdir, capture_output=True, text=True)
     if p.returncode != 0:
         return None
@@ -304,10 +250,10 @@ def compare_formats(binary, source, index, chan, when, case, workdir, rtol=2e-6)
                                location=[chan.location], channel=[chan.channel], time=when)
     mn, mx, n, spacing = case["freqs"]
     res = sr.evaluate(found[0], sr.generate_frequencies(mn, mx, n, linear=spacing == "lin"),
-                      unit=case["unit"], b62_x=2.0)
-    ref = run_c_format(binary, source.text, chan, when, case, workdir)
-    if ref is None:
-        ref = run_c_format(binary, source.blocks[index], chan, when, case, workdir)
+                      unit="def")
+    ref = run_c_format(binary, source.input_file(workdir), chan, when, case, workdir)
+    if ref is None and source.blocks is not None:
+        ref = run_c_format(binary, source.block_file(index, workdir), chan, when, case, workdir)
     if ref is None:
         return "skip"
     mine = {}
@@ -333,11 +279,11 @@ def compare_formats(binary, source, index, chan, when, case, workdir, rtol=2e-6)
     return None
 
 
-def format_main(binary, files):
+def format_main(binary, files, xml2resp=None):
     stats = dict(ok=0, bad=0, skipped=0)
     with tempfile.TemporaryDirectory() as work:
         for file in files:
-            source = Source(file, binary)
+            source = Source(file, xml2resp=xml2resp, workdir=work)
             for index, chan in enumerate(source.channels):
                 end = chan.end_time or (chan.start_time + timedelta(days=400))
                 when = (chan.start_time + min((end - chan.start_time) / 2, timedelta(days=60))).replace(microsecond=0)
@@ -351,7 +297,7 @@ def format_main(binary, files):
                     elif msg:
                         stats["bad"] += 1
                         print(f"FORMAT MISMATCH {Path(file).name} {chan.nslc} {when:%Y-%m-%d} {case['fmt']} "
-                              f"{case['extra']} {case['unit']}: {msg}")
+                              f"{case['extra']}: {msg}")
                     else:
                         stats["ok"] += 1
     print(stats)

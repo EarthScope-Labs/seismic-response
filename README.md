@@ -110,9 +110,9 @@ It is checked against a built evalresp 5.0.1 in two ways:
 * **Live comparison** (`tools/compare_evalresp.py BINARY FILES...`, needs a built C evalresp): 2,509
   complex-spectrum comparisons over every response in evalresp's own test data plus the synthetic
   fixtures, and 460 FAP/AP text comparisons (`--formats`, which includes phase unwrapping), with no
-  mismatches. A further 260 comparisons on 26 current channels fetched from the EarthScope station
-  service (8 networks) also matched, and the XML reader agreed with evalresp's own `xml2resp`
-  converter on every channel.
+  mismatches. For StationXML, add `--via-xml2resp` to feed both sides evalresp's own RESP conversion
+  (evalresp rounds delays to 5 and coefficients to 6 digits there). A further 260 comparisons on 26 current channels fetched from the EarthScope station
+  service (8 networks) also matched.
 
 Confirmed matching: Laplace (rad/s and Hz) and Z-transform poles/zeros, asymmetric/even/odd-symmetric
 FIR (including continuation blockettes and delay correction), IIR coefficients, response lists, gain-only
