@@ -10,12 +10,9 @@ A PATH is a response file or a directory; a directory means every file beneath i
 Each channel epoch of each file is tested at a time inside the epoch.  StationXML
 files are given to evalresp as they are; it detects the format itself.
 
-With --jobs N, N channel epochs are compared in parallel; output order and
+With --jobs N, N files are compared in parallel, each parsed by the worker that
+tests it; fewer files than N are split by channel epoch.  Output order and
 results are the same as for a serial run.
-
-With --via-xml2resp, StationXML is first converted by xml2resp and both sides
-evaluate that RESP.  This compares evaluation alone: the conversion rounds delays
-to 5 and coefficients to 6 significant digits, which a direct XML read does not.
 """
 
 import argparse
@@ -68,33 +65,20 @@ class Source:
     """A response file prepared for comparison: its channels and the file C reads.
 
     ``blocks`` holds the per-channel RESP blocks, or None for StationXML read directly.
-    With ``xml2resp`` (a converter executable), StationXML is converted to RESP in
-    ``workdir`` first and handled as RESP.
     """
 
-    def __init__(self, path, xml2resp=None, workdir=None):
+    def __init__(self, path):
         self.path = Path(path).resolve()
         data = self.path.read_bytes()
         if sr.looks_like_stationxml(data[:1024]):
-            if xml2resp is None:
-                self.text = None
-                self.blocks = None
-                self.channels = sr.parse_stationxml(data)
-                return
-            data = self._convert(xml2resp, workdir)
+            self.text = None
+            self.blocks = None
+            self.channels = sr.parse_stationxml(data)
+            return
         self.text = data.decode("utf-8", errors="replace")
         self.blocks = re.split(r"(?m)^(?=B050F03)", self.text)[1:]
         self.channels = sr.parse_resp(self.text, self.path.name)
         assert len(self.blocks) == len(self.channels)
-
-    def _convert(self, xml2resp, workdir):
-        out = Path(workdir) / "xml2resp.resp"
-        if out.exists():
-            out.unlink()
-        p = subprocess.run([xml2resp, "-o", str(out), str(self.path)], capture_output=True, text=True)
-        if p.returncode != 0 or not out.exists():
-            raise SeismicResponseError(f"xml2resp failed: {p.stderr.strip()[-150:] or f'rc={p.returncode}'}")
-        return out.read_bytes()
 
     def input_file(self, workdir):
         """The whole response as a file for C (RESP is normalized to UTF-8 text)."""
@@ -172,12 +156,49 @@ def _expand(paths):
             yield path
 
 
-def _source(file, xml2resp, workdir):
-    """The Source for a file, prepared once per process."""
-    key = (str(file), xml2resp)
+def _source(file):
+    """The Source for a file; the most recent one is kept for consecutive tasks on the same file."""
+    key = str(file)
     if key not in _SOURCES:
-        _SOURCES[key] = Source(file, xml2resp=xml2resp, workdir=workdir)
+        _SOURCES.clear()
+        _SOURCES[key] = Source(file)
     return _SOURCES[key]
+
+
+def _check_epochs(task, stats, check):
+    """Run ``check(source, index, workdir)`` on the channel epochs a task names (all with a
+    start time when its indices are None); returns (stats, output lines).  A file that
+    cannot be read is reported as skipped."""
+    file, indices, root = task[:3]
+    work = _workdir(root)
+    try:
+        source = _source(file)
+    except SeismicResponseError as exc:
+        return stats, [f"SKIP {file}: {exc}"]
+    if indices is None:
+        indices = [i for i, chan in enumerate(source.channels) if chan.start_time is not None]
+    lines = []
+    for index in indices:
+        delta, out = check(source, index, work)
+        for key, value in delta.items():
+            stats[key] += value
+        lines += out
+    return stats, lines
+
+
+def _file_tasks(files, jobs, root, extra):
+    """One task per file; with fewer files than jobs, one per channel epoch so every job has work."""
+    split = jobs > 1 and len(files) < jobs
+    for file in files:
+        indices = [None]
+        if split:
+            try:
+                source = _source(file)
+                indices = [[i] for i, chan in enumerate(source.channels) if chan.start_time is not None]
+            except SeismicResponseError:
+                pass  # the task reports the skip
+        for index in indices:
+            yield (file, index, root) + extra
 
 
 def _epoch_time(chan):
@@ -188,11 +209,17 @@ def _epoch_time(chan):
     return (chan.start_time + min(half, timedelta(days=60))).replace(microsecond=0)
 
 
-def check_channel(task):
+def check_file(task):
+    """Compare all CASES for the channel epochs of a task; returns (stats, output lines)."""
+    binary, rtol, verbose = task[3:]
+    stats = dict(ok=0, bad=0, both_error=0, only_c_error=0, only_py_error=0)
+    return _check_epochs(task, stats, lambda source, index, work:
+                         _check_channel(source, index, work, binary, rtol, verbose))
+
+
+def _check_channel(source, index, work, binary, rtol, verbose):
     """Compare all CASES for one channel epoch; returns (stats, output lines)."""
-    file, index, xml2resp, root, binary, rtol, verbose = task
-    work = _workdir(root)
-    source = _source(file, xml2resp, work)
+    file = source.path
     channels = source.channels
     chan = channels[index]
     when = _epoch_time(chan)
@@ -258,38 +285,20 @@ def main():
     ap.add_argument("--rtol", type=float, default=2e-6)
     ap.add_argument("-v", action="store_true")
     ap.add_argument("--formats", action="store_true", help="compare FAP/AP text output instead of complex spectra")
-    ap.add_argument("--via-xml2resp", action="store_true",
-                    help="convert StationXML with xml2resp and evaluate that RESP on both sides")
-    ap.add_argument("--xml2resp", metavar="PATH",
-                    help="xml2resp executable for --via-xml2resp (default: next to the evalresp binary)")
     ap.add_argument("-j", "--jobs", type=int, default=1, help="number of comparisons to run in parallel")
     args = ap.parse_args()
     if args.jobs < 1:
         ap.error("--jobs must be at least 1")
     if not (os.path.isfile(args.binary) and os.access(args.binary, os.X_OK)):
         ap.error(f"evalresp binary not found or not executable: {args.binary}")
-    xml2resp = None
-    if args.via_xml2resp:
-        xml2resp = args.xml2resp or str(Path(args.binary).parent / "xml2resp")
-        if not (os.path.isfile(xml2resp) and os.access(xml2resp, os.X_OK)):
-            ap.error(f"xml2resp not found or not executable: {xml2resp}")
     files = list(_expand(args.files))
     if args.formats:
-        return format_main(args.binary, files, xml2resp, args.jobs)
+        return format_main(args.binary, files, args.jobs)
 
     stats = dict(ok=0, bad=0, both_error=0, only_c_error=0, only_py_error=0)
     with tempfile.TemporaryDirectory() as root:
-        tasks = []
-        for file in files:
-            try:
-                source = _source(file, xml2resp, _workdir(root))
-            except SeismicResponseError as exc:
-                print(f"SKIP {file}: {exc}")
-                continue
-            for index, chan in enumerate(source.channels):
-                if chan.start_time is not None:
-                    tasks.append((file, index, xml2resp, root, args.binary, args.rtol, args.v))
-        _run_tasks(check_channel, tasks, args.jobs, stats)
+        tasks = _file_tasks(files, args.jobs, root, (args.binary, args.rtol, args.v))
+        _run_tasks(check_file, tasks, args.jobs, stats)
     print(stats)
     return 1 if stats["bad"] or stats["only_py_error"] else 0
 
@@ -363,11 +372,16 @@ def compare_formats(binary, source, index, chan, when, case, workdir, rtol=2e-6)
     return None
 
 
-def check_channel_formats(task):
+def check_file_formats(task):
+    """Compare all FORMAT_CASES for the channel epochs of a task; returns (stats, output lines)."""
+    binary = task[3]
+    return _check_epochs(task, dict(ok=0, bad=0, skipped=0), lambda source, index, work:
+                         _check_channel_formats(source, index, work, binary))
+
+
+def _check_channel_formats(source, index, work, binary):
     """Compare all FORMAT_CASES for one channel epoch; returns (stats, output lines)."""
-    file, index, xml2resp, root, binary = task
-    work = _workdir(root)
-    source = _source(file, xml2resp, work)
+    file = source.path
     chan = source.channels[index]
     when = _epoch_time(chan)
     stats = dict(ok=0, bad=0, skipped=0)
@@ -388,16 +402,11 @@ def check_channel_formats(task):
     return stats, lines
 
 
-def format_main(binary, files, xml2resp=None, jobs=1):
+def format_main(binary, files, jobs=1):
     stats = dict(ok=0, bad=0, skipped=0)
     with tempfile.TemporaryDirectory() as root:
-        tasks = []
-        for file in files:
-            source = _source(file, xml2resp, _workdir(root))
-            for index, chan in enumerate(source.channels):
-                if chan.start_time is not None:
-                    tasks.append((file, index, xml2resp, root, binary))
-        _run_tasks(check_channel_formats, tasks, jobs, stats)
+        tasks = _file_tasks(files, jobs, root, (binary,))
+        _run_tasks(check_file_formats, tasks, jobs, stats)
     print(stats)
     return 1 if stats["bad"] else 0
 

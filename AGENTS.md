@@ -1,4 +1,4 @@
-Project instructions for libmseed. These override default behavior.
+Project instructions for this repo. These override default behavior.
 
 ## Git: never write to the repository unless told to
 
