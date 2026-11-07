@@ -61,11 +61,11 @@ function setBadge(text, ok = false) {
 
 const S = {
   channels: [],       // every loaded channel epoch (from the backend)
-  key: null,          // current source group (load + Source ID), see sourceGroups()
-  checked: new Set(), // keys of the source groups ticked for comparison (the current group is always plotted)
-  chanId: null,       // current group's selected channel epoch id
-  results: [],        // plotted evaluations: { key, label, chanId, color, current, res }
-  last: null,         // current group's evaluation result
+  cur: null,          // current channel epoch id (the current epoch is always plotted)
+  checked: new Set(), // ids of the channel epochs ticked for comparison
+  expanded: new Set(), // keys of the source groups (see sourceGroups()) shown expanded
+  results: [],        // plotted evaluations: { chanId, label, color, current, res }
+  last: null,         // current epoch's evaluation result
   request: null,      // request that produced it
   seq: 0,             // evaluation sequence number (to drop stale replies)
   excluded: new Set(), // stage numbers unchecked in the stage table
@@ -87,20 +87,12 @@ function globToRegExp(glob) {
   return new RegExp('^' + esc + '$', 'i');
 }
 
-function toLocalInput(date) { // Date -> 'YYYY-MM-DDTHH:MM:SS' in UTC (API and query format)
-  return date.toISOString().slice(0, 19);
-}
-
-function fmtTimeField(date) { return toLocalInput(date).replace('T', ' '); } // 'YYYY-MM-DD hh:mm:ss'
-
-function parseUtc(value) { // 'YYYY-MM-DD[ hh:mm[:ss]]' (taken as UTC; time defaults to 00:00:00) -> Date
-  const m = /^(\d{4}-\d\d-\d\d)(?:[ T](\d\d:\d\d)(:\d\d)?)?$/.exec((value || '').trim());
-  if (!m) return null;
-  const d = new Date(`${m[1]}T${m[2] || '00:00'}${m[3] || ':00'}Z`);
-  return isNaN(d) ? null : d;
-}
-
 function fmtDate(iso) { return iso ? iso.replace('T', ' ').replace('Z', '') : 'open'; }
+
+function fmtMinute(iso) { return iso ? fmtDate(iso).slice(0, 16) : 'open'; } // 'YYYY-MM-DD hh:mm'
+
+/** Filename-safe UTC time, 'YYYYMMDDThhmmssZ' (fractional seconds dropped). */
+function fileStamp(iso) { return iso.replace(/\.\d+/, '').replace(/[-:]/g, ''); }
 
 function fmtNum(v, digits = 4) {
   if (v === null || v === undefined || !isFinite(v)) return '–';
@@ -154,7 +146,7 @@ async function loadSources(sources) {
   }
   if (problems.length) setMsg(msg, problems.join('\n'), 'error');
   else setMsg(msg, `Loaded ${added} channel epoch${added === 1 ? '' : 's'}.`, 'ok');
-  if (added) await refreshChannels(true);
+  if (added) await refreshChannels();
 }
 
 function loadFiles(files) {
@@ -196,11 +188,11 @@ async function clearResponses() {
   catch (e) { setMsg($('loadMsg'), 'Could not clear: ' + e.message, 'error'); return; }
   $('clearBtn').disabled = true;
   S.seq++; // drop any evaluation still in flight
-  S.channels = []; S.key = null; S.chanId = null; S.last = null; S.request = null; S.results = [];
+  S.channels = []; S.cur = null; S.last = null; S.request = null; S.results = [];
   S.checked.clear();
+  S.expanded.clear();
   S.excluded.clear();
   $('alerts').innerHTML = '';
-  setMsg($('epochMsg'), '');
   setMsg($('loadMsg'), 'Cleared all loaded responses.', 'ok');
   renderSidList();
   drawEmpty();
@@ -218,11 +210,6 @@ async function fetchFdsn() {
   q.set('level', 'response');
   q.set('format', 'xml');
   q.set('nodata', '404');
-  const t = parseUtc($('timeInput').value);
-  if (t) {
-    q.set('starttime', toLocalInput(t));
-    q.set('endtime', toLocalInput(new Date(t.getTime() + 1000)));
-  }
   const url = $('svcUrl').value.trim() + '?' + q.toString();
   setMsg(msg, 'Fetching…');
   try {
@@ -233,26 +220,28 @@ async function fetchFdsn() {
     const res = await backend.call('load', url, text);
     if (!res.ok) throw new Error(res.error);
     setMsg(msg, `Fetched ${res.added} channel epoch${res.added === 1 ? '' : 's'}.`, 'ok');
-    await refreshChannels(true);
+    await refreshChannels();
   } catch (e) {
     const cors = e instanceof TypeError ? ' (the request was blocked; the service may not allow cross-origin access)' : '';
     setMsg(msg, 'Fetch failed: ' + e.message + cors, 'error');
   }
 }
 
-/* ------------------------------------------------------------------ channel & time selection */
+/* ------------------------------------------------------------------ channel & epoch selection */
 
-async function refreshChannels(selectNew) {
+async function refreshChannels() {
   S.channels = await backend.call('channels');
   $('clearBtn').disabled = !S.channels.length;
-  renderSidList(selectNew);
+  renderSidList();
 }
+
+function groupKey(c) { return `${c.load}|${c.source_id}`; }
 
 /** One group per (load, Source ID); a Source ID present in several loads is numbered #1, #2, ... */
 function sourceGroups() {
   const byKey = new Map();
   for (const c of S.channels) {
-    const key = `${c.load}|${c.source_id}`;
+    const key = groupKey(c);
     if (!byKey.has(key)) byKey.set(key, { key, sid: c.source_id, load: c.load, origin: c.origin, label: c.source_id });
   }
   const groups = [...byKey.values()].sort((a, b) => (a.sid < b.sid ? -1 : a.sid > b.sid ? 1 : a.load - b.load));
@@ -269,153 +258,181 @@ function sourceGroups() {
 
 function groupOf(key) { return sourceGroups().find((g) => g.key === key) || null; }
 
-function visibleGroups() {
-  const filter = $('sidFilter').value.trim();
-  const re = filter ? globToRegExp(filter.includes('*') || filter.includes('?') ? filter : '*' + filter + '*') : null;
-  return sourceGroups().filter((g) => !re || re.test(g.sid));
-}
-
-/** The current group first (it takes the first plot colour), then the visible ticked groups in list order. */
-function plottedGroups() {
-  const groups = visibleGroups();
-  const cur = groups.find((g) => g.key === S.key);
-  return [...(cur ? [cur] : []), ...groups.filter((g) => g !== cur && S.checked.has(g.key))];
-}
-
-/** Tooltip for a list row: the distinct instrument descriptions of its epochs, then the source. */
-function rowTip(g) {
-  const instruments = [...new Set(epochsOf(g).map((c) => c.instrument).filter(Boolean))];
-  return [...instruments.map((d) => `Instrument: ${d}`), `Source: ${g.origin}`].join('\n');
-}
-
-function renderRows() {
-  const list = $('sidList');
-  const groups = visibleGroups();
-  const plotted = plottedGroups();
-  const active = list.contains(document.activeElement)
-    ? { key: document.activeElement.dataset.key, box: document.activeElement.tagName === 'INPUT' } : null;
-  list.innerHTML = '';
-  for (const g of groups) {
-    const row = document.createElement('div');
-    row.className = 'sid-row' + (g.key === S.key ? ' current' : '');
-    row.dataset.key = g.key;
-    const cb = document.createElement('input');
-    cb.type = 'checkbox'; cb.checked = S.checked.has(g.key) || g.key === S.key; cb.dataset.key = g.key;
-    cb.setAttribute('aria-label', `Compare ${g.label}`);
-    const sw = document.createElement('span');
-    sw.className = 'sid-swatch';
-    const slot = plotted.findIndex((p) => p.key === g.key);
-    if (plotted.length > 1 && slot >= 0) sw.style.background = `var(${plotColor(slot)})`;
-    const name = document.createElement('button');
-    name.type = 'button'; name.className = 'sid-name'; name.textContent = g.label;
-    name.dataset.key = g.key; name.dataset.tip = rowTip(g);
-    if (g.key === S.key) name.setAttribute('aria-current', 'true');
-    row.append(cb, sw, name);
-    list.appendChild(row);
-  }
-  if (active) focusRow(active.key, active.box);
-}
-
-function focusRow(key, box) {
-  const target = [...$('sidList').querySelectorAll(box ? 'input' : 'button')].find((x) => x.dataset.key === key);
-  if (target) target.focus();
-}
-
-function renderSidList() {
-  const all = sourceGroups();
-  const known = new Set(all.map((g) => g.key));
-  for (const k of [...S.checked]) if (!known.has(k)) S.checked.delete(k);
-  const groups = visibleGroups();
-  if (!groups.length) { S.key = null; renderRows(); renderEpochs(); updateAll(); recompute(); return; }
-  if (!groups.some((g) => g.key === S.key)) S.key = groups[0].key;
-  renderRows();
-  renderEpochs();
-  updateAll();
-}
-
-/** Make a group the current one (it drives the epoch, stage table and text export). */
-function setCurrent(key) {
-  S.key = key;
-  renderRows();
-  renderEpochs();
-}
-
-/** A row's box is ticked when it is plotted. Ticking keeps the current row too; unticking the current row hands over to another plotted one. */
-function onTick(key, on) {
-  if (on) {
-    S.checked.add(key);
-    if (S.key) S.checked.add(S.key);
-  } else {
-    S.checked.delete(key);
-    const next = key === S.key ? plottedGroups().find((g) => g.key !== key) : null;
-    if (next) { setCurrent(next.key); return; }
-  }
-  renderRows();
-  updateAll();
-  recompute();
-}
+function chanOf(id) { return S.channels.find((c) => c.id === id) || null; }
 
 function epochsOf(g) {
   return S.channels.filter((c) => c.source_id === g.sid && c.load === g.load)
     .sort((a, b) => (a.start || '').localeCompare(b.start || ''));
 }
 
-function renderEpochs() {
-  const sel = $('epochSelect');
-  sel.innerHTML = '';
-  const group = S.key ? groupOf(S.key) : null;
-  const eps = group ? epochsOf(group) : [];
-  for (const c of eps) {
-    const o = document.createElement('option');
-    o.value = c.id;
-    o.textContent = `${fmtDate(c.start)} → ${fmtDate(c.end)}`;
-    sel.appendChild(o);
-  }
-  if (!eps.length) { S.chanId = null; return; }
+function visibleGroups() {
+  const filter = $('sidFilter').value.trim();
+  const re = filter ? globToRegExp(filter.includes('*') || filter.includes('?') ? filter : '*' + filter + '*') : null;
+  return sourceGroups().filter((g) => !re || re.test(g.sid));
+}
 
-  // Default time: now if some epoch covers it, otherwise just inside the latest epoch
-  if (!parseUtc($('timeInput').value)) {
-    const now = new Date();
-    const covers = eps.some((c) => contains(c, now));
-    const latest = eps[eps.length - 1];
-    const t = covers ? now : new Date(Date.parse(latest.start) + 3600 * 1000);
-    $('timeInput').value = fmtTimeField(t);
+/** Start of an epoch for labels: the date, plus hh:mm when not at midnight. */
+function epochTag(c) {
+  if (!c.start) return `→ ${fmtMinute(c.end).slice(0, 10)}`;
+  const [date, time] = fmtMinute(c.start).split(' ');
+  return time === '00:00' ? date : `${date} ${time}`;
+}
+
+/** Plot label of an epoch: the group label, plus the epoch start when the group has several epochs. */
+function epochLabel(g, c) { return epochsOf(g).length > 1 ? `${g.label} · ${epochTag(c)}` : g.label; }
+
+/** The current epoch first (it takes the first plot colour), then the visible ticked epochs in list order. */
+function plottedEpochs() {
+  const out = [];
+  const cur = chanOf(S.cur);
+  const groups = visibleGroups();
+  const curGroup = cur ? groups.find((g) => g.key === groupKey(cur)) : null;
+  if (curGroup) out.push({ chan: cur, group: curGroup, label: epochLabel(curGroup, cur) });
+  for (const g of groups) {
+    for (const c of epochsOf(g)) if (c.id !== S.cur && S.checked.has(c.id)) out.push({ chan: c, group: g, label: epochLabel(g, c) });
   }
-  chooseEpochByTime();
+  return out;
+}
+
+/** Tooltip for a group row: the distinct instrument descriptions of its epochs, then the source. */
+function groupTip(g) {
+  const instruments = [...new Set(epochsOf(g).map((c) => c.instrument).filter(Boolean))];
+  return [...instruments.map((d) => `Instrument: ${d}`), `Source: ${g.origin}`].join('\n');
+}
+
+function epochTip(c) {
+  return [`${fmtDate(c.start)} → ${fmtDate(c.end)}`, ...(c.instrument ? [`Instrument: ${c.instrument}`] : [])].join('\n');
+}
+
+function renderRows() {
+  const list = $('sidList');
+  const groups = visibleGroups();
+  const plotted = plottedEpochs();
+  const ticked = (c) => S.checked.has(c.id);
+  const active = list.contains(document.activeElement)
+    ? { id: document.activeElement.dataset.id, box: document.activeElement.tagName === 'INPUT' } : null;
+  list.innerHTML = '';
+  for (const g of groups) {
+    const eps = epochsOf(g);
+    const open = S.expanded.has(g.key);
+    const on = eps.filter(ticked).length;
+    const row = document.createElement('div');
+    row.className = 'sid-row group';
+    row.dataset.id = 'g:' + g.key;
+    const chev = document.createElement('span');
+    chev.className = 'sid-chevron'; chev.setAttribute('aria-hidden', 'true'); chev.textContent = open ? '▾' : '▸';
+    const cb = document.createElement('input');
+    cb.type = 'checkbox'; cb.checked = on === eps.length; cb.indeterminate = on > 0 && on < eps.length;
+    cb.dataset.id = row.dataset.id;
+    cb.setAttribute('aria-label', `Compare all epochs of ${g.label}`);
+    const name = document.createElement('button');
+    name.type = 'button'; name.className = 'sid-name'; name.textContent = g.label;
+    name.dataset.id = row.dataset.id; name.dataset.tip = groupTip(g);
+    name.setAttribute('aria-expanded', String(open));
+    const count = document.createElement('span');
+    count.className = 'sid-count'; count.textContent = !open && on ? `${on}/${eps.length}` : String(eps.length);
+    row.append(chev, cb, name, count);
+    list.appendChild(row);
+    if (!open) continue;
+    for (const c of eps) {
+      const er = document.createElement('div');
+      er.className = 'sid-row epoch' + (c.id === S.cur ? ' current' : '');
+      er.dataset.id = 'e:' + c.id;
+      const ecb = document.createElement('input');
+      ecb.type = 'checkbox'; ecb.checked = ticked(c); ecb.dataset.id = er.dataset.id;
+      ecb.setAttribute('aria-label', `Compare ${g.label} epoch ${fmtMinute(c.start)} to ${fmtMinute(c.end)}`);
+      const sw = document.createElement('span');
+      sw.className = 'sid-swatch';
+      const slot = plotted.findIndex((p) => p.chan.id === c.id);
+      if (plotted.length > 1 && slot >= 0) sw.style.background = `var(${plotColor(slot)})`;
+      const en = document.createElement('button');
+      en.type = 'button'; en.className = 'sid-name'; en.textContent = `${fmtMinute(c.start)} → ${fmtMinute(c.end)}`;
+      en.dataset.id = er.dataset.id; en.dataset.tip = epochTip(c);
+      if (c.id === S.cur) en.setAttribute('aria-current', 'true');
+      er.append(ecb, sw, en);
+      list.appendChild(er);
+    }
+  }
+  if (active) focusRow(active.id, active.box);
+}
+
+/** Row ids are 'g:<group key>' or 'e:<epoch id>'. */
+function splitId(id) {
+  const i = (id || '').indexOf(':');
+  return i < 0 ? [null, null] : [id.slice(0, i), id.slice(i + 1)];
+}
+
+function focusRow(id, box) {
+  const target = [...$('sidList').querySelectorAll(box ? 'input' : 'button')].find((x) => x.dataset.id === id);
+  if (target) target.focus();
+}
+
+/** Keep the current epoch inside the visible groups, then redraw. */
+function renderSidList() {
+  const known = new Set(S.channels.map((c) => c.id));
+  for (const id of [...S.checked]) if (!known.has(id)) S.checked.delete(id);
+  const keys = new Set(sourceGroups().map((g) => g.key));
+  for (const k of [...S.expanded]) if (!keys.has(k)) S.expanded.delete(k);
+  const groups = visibleGroups();
+  const cur = chanOf(S.cur);
+  if (!cur || !groups.some((g) => g.key === groupKey(cur))) setCurrent(groups.length ? defaultEpoch(groups[0]) : null);
+  selectionChanged();
+}
+
+/** The epoch of a group containing now, else its latest one. */
+function defaultEpoch(g) {
+  const eps = epochsOf(g);
+  const now = Date.now();
+  return (eps.filter((c) => contains(c, now)).pop() || eps[eps.length - 1]).id;
 }
 
 function contains(c, t) {
   return (!c.start || Date.parse(c.start) <= t) && (!c.end || Date.parse(c.end) > t);
 }
 
-async function chooseEpochByTime() {
-  const group = S.key ? groupOf(S.key) : null;
-  if (!group) return;
-  const t = parseUtc($('timeInput').value);
-  if (!t && $('timeInput').value.trim()) { setMsg($('epochMsg'), 'Enter the time as YYYY-MM-DD or YYYY-MM-DD hh:mm:ss.', 'error'); return; }
-  const pick = await epochFor(group, t);
-  if (pick.error) { setMsg($('epochMsg'), pick.error, 'error'); return; }
-  const note = $('epochMsg');
-  if (S.chanId !== pick.id) S.excluded.clear();
-  S.chanId = pick.id;
-  $('epochSelect').value = String(S.chanId);
-  if (pick.covered) setMsg(note, epochsOf(group).length > 1 ? 'Epoch chosen for this time (shortest epoch containing it).' : '');
-  else setMsg(note, 'No epoch covers this time; showing the nearest one.');
-  autoFrequencies();
+function selectionChanged() {
+  renderRows();
+  updateAll();
   recompute();
 }
 
-/** Epoch of a group at time t: the shortest one containing it, else the nearest one. */
-async function epochFor(group, t) {
-  const ids = await backend.call('select', group.sid, t ? toLocalInput(t) + 'Z' : null, group.load);
-  if (!Array.isArray(ids)) return { error: ids.error || 'Could not select an epoch.' };
-  if (ids.length) return { id: ids[0], covered: true };
-  const eps = epochsOf(group);
-  const nearest = t ? eps.reduce((best, c) => {
-    const d = (x) => Math.min(Math.abs(Date.parse(x.start || 0) - t), x.end ? Math.abs(Date.parse(x.end) - t) : Infinity);
-    return !best || d(c) < d(best) ? c : best;
-  }, null) : eps[0];
-  return { id: nearest.id, covered: false };
+/** Make an epoch the current one (it drives the stage table, summary and text export) and show its group expanded. */
+function setCurrent(id) {
+  if (id !== S.cur) S.excluded.clear();
+  S.cur = id;
+  const c = chanOf(id);
+  if (c) S.expanded.add(groupKey(c));
+  autoFrequencies();
+}
+
+/** Ticked epochs stay plotted when another epoch becomes current; ticking also keeps the current epoch. */
+function onTick(id, on) {
+  if (on) {
+    S.checked.add(id);
+    if (S.cur !== null) S.checked.add(S.cur);
+  } else {
+    S.checked.delete(id);
+  }
+  selectionChanged();
+}
+
+function onGroupTick(key, on) {
+  const g = groupOf(key);
+  if (!g) return;
+  const ids = epochsOf(g).map((c) => c.id);
+  if (on) {
+    for (const id of ids) S.checked.add(id);
+    if (S.cur !== null) S.checked.add(S.cur);
+  } else {
+    for (const id of ids) S.checked.delete(id);
+  }
+  selectionChanged();
+}
+
+function toggleGroup(key, open) {
+  if (open === undefined) open = !S.expanded.has(key);
+  if (open) S.expanded.add(key); else S.expanded.delete(key);
+  renderRows();
 }
 
 /** Default the maximum frequency to the channel's Nyquist (unless the user chose a range). */
@@ -430,31 +447,15 @@ function channelNyquist(chan) {
 
 function autoFrequencies() {
   if (S.freqTouched) return;
-  const nyquist = channelNyquist(S.channels.find((c) => c.id === S.chanId));
+  const nyquist = channelNyquist(chanOf(S.cur));
   if (nyquist) $('fMax').value = String(Number((nyquist * 1.1).toPrecision(3))); // 10% past Nyquist
-}
-
-function onEpochPicked() {
-  if (S.chanId !== Number($('epochSelect').value)) S.excluded.clear();
-  S.chanId = Number($('epochSelect').value);
-  const c = S.channels.find((x) => x.id === S.chanId);
-  const t = parseUtc($('timeInput').value);
-  if (c && (!t || !contains(c, t))) { // keep the time consistent with the chosen epoch
-    const start = c.start ? Date.parse(c.start) : Date.now();
-    const end = c.end ? Date.parse(c.end) - 1000 : start + 3600 * 1000;
-    const clamped = t ? Math.min(Math.max(t.getTime(), start), end) : start;
-    $('timeInput').value = fmtTimeField(new Date(clamped));
-  }
-  setMsg($('epochMsg'), '');
-  autoFrequencies();
-  recompute();
 }
 
 /* ------------------------------------------------------------------ computing */
 
 function buildRequest() {
   return {
-    channel: S.chanId,
+    channel: S.cur,
     frequencies: {
       min: Number($('fMin').value), max: Number($('fMax').value), count: Math.round(Number($('fN').value)),
       spacing: document.querySelector('input[name=spacing]:checked').value,
@@ -479,7 +480,7 @@ function validate(req) {
 
 const recompute = debounce(async () => {
   $('alerts').innerHTML = '';
-  if (S.chanId === null) {
+  if (S.cur === null) {
     S.seq++;
     S.last = null; S.request = null; S.results = [];
     drawEmpty();
@@ -489,21 +490,14 @@ const recompute = debounce(async () => {
   const req = buildRequest();
   const bad = validate(req);
   if (bad) { showAlert('error', bad); return; }
-  const plotted = plottedGroups();
+  const plotted = plottedEpochs();
   const single = plotted.length === 1;
-  const curId = S.chanId;
-  const t = parseUtc($('timeInput').value);
   const mine = ++S.seq;
 
-  // The current group uses its chosen epoch and stage selection; the others use the epoch at the evaluation time.
-  const out = await Promise.all(plotted.map(async (g, i) => {
-    const current = g.key === S.key;
-    const item = { key: g.key, label: g.label, color: plotColor(i), current, chanId: curId };
-    if (!current) {
-      const pick = await epochFor(g, t);
-      if (pick.error) return { ...item, res: { ok: false, error: pick.error } };
-      item.chanId = pick.id;
-    }
+  // The current epoch uses the stage selection; the others include all stages.
+  const out = await Promise.all(plotted.map(async (p, i) => {
+    const current = p.chan.id === S.cur;
+    const item = { chanId: p.chan.id, label: p.label, color: plotColor(i), current };
     const r = { ...req, channel: item.chanId, per_stage: req.per_stage && single && current, exclude_stages: current ? req.exclude_stages : [] };
     try { item.res = await backend.call('evaluate', JSON.stringify(r)); }
     catch (e) { item.res = { ok: false, error: e.message }; }
@@ -533,50 +527,47 @@ const recompute = debounce(async () => {
 /* ------------------------------------------------------------------ summary / table */
 
 function updateAll() {
-  const several = plottedGroups().length > 1;
+  const plotted = plottedEpochs();
+  const several = plotted.length > 1;
   const perStage = $('perStage');
   perStage.disabled = several;
   const perStageLabel = perStage.closest('label');
   if (several) perStageLabel.dataset.tip = 'Stage curves are only drawn when a single response is plotted.';
   else delete perStageLabel.dataset.tip;
-  const chan = S.channels.find((c) => c.id === S.chanId);
+  const chan = chanOf(S.cur);
   $('exportBtn').disabled = !S.last;
   const title = $('plotTitle');
-  const group = chan && S.key ? groupOf(S.key) : null;
-  title.textContent = chan ? (group ? group.label : chan.source_id) : (S.channels.length ? 'No response plotted' : 'No response loaded');
-  if (chan && chan.origin) title.dataset.tip = chan.origin; else delete title.dataset.tip;
-  if (chan) {
-    const range = document.createElement('span');
-    range.className = 'title-range';
-    range.textContent = `${fmtDate(chan.start)} → ${fmtDate(chan.end)}`;
-    title.appendChild(range);
-    const others = plottedGroups().length - 1;
-    if (others > 0) {
-      const more = document.createElement('span');
-      more.className = 'title-range';
-      more.textContent = `+ ${others} compared`;
-      title.appendChild(more);
+  const group = chan ? groupOf(groupKey(chan)) : null;
+  title.replaceChildren();
+  delete title.dataset.tip;
+  const entries = titleEntries();
+  if (!entries.length) title.textContent = S.channels.length ? 'No response plotted' : 'No response loaded';
+  entries.forEach((p, i) => {
+    const line = document.createElement('span');
+    line.className = 'title-line';
+    if (p.chan.origin) line.dataset.tip = p.chan.origin;
+    if (several) {
+      const swatch = document.createElement('span');
+      swatch.className = 'sid-swatch';
+      swatch.style.background = `var(${plotColor(i)})`;
+      line.appendChild(swatch);
     }
-  }
-
-  // One line per plotted response, in its plot colour, when several are plotted.
-  const instrument = $('instrument');
-  const lines = [];
-  if (S.results.length > 1) {
-    for (const r of S.results) {
-      const c = S.channels.find((x) => x.id === r.chanId);
-      if (c && c.instrument) lines.push(`<div>Instrument (${esc(r.label)}): <b style="color:var(${r.color})">${esc(c.instrument)}</b></div>`);
+    line.appendChild(document.createTextNode(p.label));
+    for (const text of titleParts(p.chan)) {
+      const range = document.createElement('span');
+      range.className = 'title-range';
+      range.textContent = text;
+      line.appendChild(range);
     }
-  } else if (chan && chan.instrument) lines.push(`Instrument: <b>${esc(chan.instrument)}</b>`);
-  instrument.hidden = !lines.length;
-  instrument.innerHTML = lines.join('');
+    title.appendChild(line);
+  });
 
   // Name the response the stage table applies to when several are plotted.
   const stageFor = $('stageFor');
-  const slot = plottedGroups().findIndex((p) => p.key === S.key);
-  stageFor.hidden = !(group && plottedGroups().length > 1 && slot >= 0);
+  const slot = plotted.findIndex((p) => p.chan.id === S.cur);
+  stageFor.hidden = !(group && several && slot >= 0);
   stageFor.innerHTML = stageFor.hidden ? ''
-    : `<span class="sid-swatch" style="background:var(${plotColor(slot)})"></span>for <b style="color:var(${plotColor(slot)})">${esc(group.label)}</b>`;
+    : `<span class="sid-swatch" style="background:var(${plotColor(slot)})"></span>for <b style="color:var(${plotColor(slot)})">${esc(plotted[slot].label)}</b>`;
 
   const tbl = $('stageTable'), body = tbl.querySelector('tbody');
   body.innerHTML = '';
@@ -655,7 +646,7 @@ function el(name, attrs = {}, parent) {
 function drawEmpty() {
   $('plot').toggleAttribute('hidden', true); // SVG elements have no .hidden property
   $('placeholder').hidden = false;
-  $('placeholder').textContent = S.chanId === null
+  $('placeholder').textContent = S.cur === null
     ? (S.channels.length ? 'No response matches the filter.' : 'Load a StationXML, RESP or SAC PZ file (or fetch one from an FDSN service), then pick a channel.')
     : 'No response could be computed for these settings.';
 }
@@ -916,42 +907,104 @@ function drawBode() {
 
 /* ------------------------------------------------------------------ export */
 
+/** Title lines for the plotted responses (or the current channel): [{ chan, label }]. */
+function titleEntries() {
+  const plotted = plottedEpochs();
+  if (plotted.length) return plotted.map((p) => ({ chan: p.chan, label: p.group ? p.group.label : p.label }));
+  const chan = chanOf(S.cur);
+  if (!chan) return [];
+  const group = groupOf(groupKey(chan));
+  return [{ chan, label: group ? group.label : chan.source_id }];
+}
+
+/** Validity range and instrument description shown after a title label. */
+function titleParts(chan) {
+  const parts = [`${fmtDate(chan.start)} → ${fmtDate(chan.end)}`];
+  if (chan.instrument) parts.push(chan.instrument);
+  return parts;
+}
+
+const TITLE_PAD = 10, TITLE_LINE_H = 18;
+
+/** Title block for the exported plot, drawn into `svg`; returns { g, height } (g is null without a title). */
+function exportTitle(svg) {
+  const entries = titleEntries();
+  if (!entries.length) return { g: null, height: 0 };
+  const g = document.createElementNS(NS, 'g');
+  svg.appendChild(g); // attached while measuring text
+  let y = TITLE_PAD, x0 = TITLE_PAD;
+  entries.forEach((p, i) => {
+    x0 = TITLE_PAD;
+    if (entries.length > 1) {
+      el('rect', { x: TITLE_PAD, y: y + TITLE_LINE_H / 2 - 5, width: 14, height: 3, rx: 1.5, style: `fill:var(${plotColor(i)})` }, g);
+      x0 += 22;
+    }
+    const newLine = (indent) => el('text', { x: x0 + indent, y: y + 13, class: 'export-title' }, g);
+    let t = newLine(0);
+    t.textContent = p.label;
+    for (const part of titleParts(p.chan)) {
+      const span = el('tspan', { class: 'export-title-sub', dx: 12 }, t);
+      span.textContent = part;
+      // a part that would overrun the right edge continues on an indented line
+      if (t.childNodes.length > 2 && x0 + t.getComputedTextLength() > W - TITLE_PAD) {
+        t.removeChild(span);
+        y += TITLE_LINE_H;
+        t = newLine(12);
+        el('tspan', { class: 'export-title-sub' }, t).textContent = part;
+      }
+    }
+    y += TITLE_LINE_H;
+  });
+  svg.removeChild(g);
+  return { g, height: y + TITLE_PAD };
+}
+
 async function standaloneSvg() {
   const css = await (await fetch('style.css')).text();
   const rules = css.slice(css.indexOf('/* SVG plot */'));
   const cs = getComputedStyle(document.documentElement);
   const resolve = (s) => s.replace(/var\((--[\w-]+)\)/g, (_, n) => cs.getPropertyValue(n).trim());
+  const { g: title, height: hdr } = exportTitle($('plot'));
   const clone = $('plot').cloneNode(true);
   clone.setAttribute('xmlns', NS);
   clone.setAttribute('width', W);
-  clone.setAttribute('height', H);
+  clone.setAttribute('height', H + hdr);
+  clone.setAttribute('viewBox', `0 0 ${W} ${H + hdr}`);
   clone.removeAttribute('hidden');
+  if (title) {
+    const body = el('g', { transform: `translate(0 ${hdr})` });
+    while (clone.firstChild) body.appendChild(clone.firstChild);
+    clone.appendChild(el('rect', { x: 0, y: 0, width: W, height: H + hdr, class: 'plot-bg' }));
+    clone.appendChild(title);
+    clone.appendChild(body);
+  }
   const style = document.createElementNS(NS, 'style');
   style.textContent = resolve(rules);
   clone.insertBefore(style, clone.firstChild);
-  return resolve(new XMLSerializer().serializeToString(clone));
+  return { text: resolve(new XMLSerializer().serializeToString(clone)), height: H + hdr };
 }
 
 async function doExport(kind) {
-  const chan = S.channels.find((c) => c.id === S.chanId);
-  const base = S.results.length > 1 ? 'responses' : chan ? chan.nslc : 'response';
+  const chan = chanOf(S.cur);
+  const stamp = chan && chan.start ? `.${fileStamp(chan.start)}` : '';
+  const base = S.results.length > 1 ? 'responses' : chan ? chan.nslc + stamp : 'response';
   if (kind === 'svg') {
-    return download(`${base}.svg`, new Blob([await standaloneSvg()], { type: 'image/svg+xml' }));
+    return download(`${base}.svg`, new Blob([(await standaloneSvg()).text], { type: 'image/svg+xml' }));
   }
   if (kind === 'png') {
-    const svgText = await standaloneSvg();
+    const { text: svgText, height } = await standaloneSvg();
     const img = new Image();
     const url = URL.createObjectURL(new Blob([svgText], { type: 'image/svg+xml' }));
     await new Promise((ok, bad) => { img.onload = ok; img.onerror = bad; img.src = url; });
     const canvas = document.createElement('canvas');
-    canvas.width = W * 2; canvas.height = H * 2;
+    canvas.width = W * 2; canvas.height = height * 2;
     canvas.getContext('2d').drawImage(img, 0, 0, canvas.width, canvas.height);
     URL.revokeObjectURL(url);
     return canvas.toBlob((b) => download(`${base}.png`, b), 'image/png');
   }
   const res = await backend.call('export', JSON.stringify(S.request), kind);
   if (!res.ok) { showAlert('error', res.error); return; }
-  download(res.filename, new Blob([res.text], { type: 'text/plain' }));
+  download(res.filename + stamp, new Blob([res.text], { type: 'text/plain' }));
 }
 
 /* ------------------------------------------------------------------ wiring */
@@ -995,7 +1048,7 @@ function wireTips() {
 function wire() {
   wireTips();
   $('useAll').onclick = () => {
-    const chan = S.channels.find((c) => c.id === S.chanId);
+    const chan = chanOf(S.cur);
     if (!chan) return;
     if (S.excluded.size) S.excluded.clear();
     else for (const st of chan.stages) if (st.sequence > 0) S.excluded.add(st.sequence);
@@ -1030,25 +1083,36 @@ function wire() {
   $('clearBtn').onclick = clearResponses;
 
   $('sidFilter').oninput = debounce(() => renderSidList(), 150);
-  $('sidList').addEventListener('change', (e) => { if (e.target.dataset.key) onTick(e.target.dataset.key, e.target.checked); });
+  $('sidList').addEventListener('change', (e) => {
+    const [kind, id] = splitId(e.target.dataset.id);
+    if (kind === 'g') onGroupTick(id, e.target.checked);
+    else if (kind === 'e') onTick(Number(id), e.target.checked);
+  });
   $('sidList').addEventListener('click', (e) => {
     const row = e.target.closest('.sid-row');
-    if (!row || e.target.tagName === 'INPUT' || row.dataset.key === S.key) return;
-    setCurrent(row.dataset.key);
+    if (!row || e.target.tagName === 'INPUT') return;
+    const [kind, id] = splitId(row.dataset.id);
+    if (kind === 'g') toggleGroup(id);
+    else if (kind === 'e' && Number(id) !== S.cur) { setCurrent(Number(id)); selectionChanged(); }
   });
   $('sidList').addEventListener('keydown', (e) => {
+    if (e.target.tagName === 'INPUT') return;
+    const [kind, id] = splitId(e.target.dataset.id);
+    if (kind === 'g' && (e.key === 'ArrowLeft' || e.key === 'ArrowRight')) {
+      e.preventDefault();
+      toggleGroup(id, e.key === 'ArrowRight');
+      return;
+    }
     const step = e.key === 'ArrowDown' ? 1 : e.key === 'ArrowUp' ? -1 : 0;
-    if (!step || e.target.tagName === 'INPUT') return;
-    const groups = visibleGroups();
-    const next = groups[groups.findIndex((g) => g.key === S.key) + step];
+    if (!step) return;
+    const names = [...$('sidList').querySelectorAll('button.sid-name')];
+    const next = names[names.indexOf(e.target) + step];
     if (!next) return;
     e.preventDefault();
-    setCurrent(next.key);
-    focusRow(next.key, false);
+    next.focus();
+    const [nextKind, nextId] = splitId(next.dataset.id);
+    if (nextKind === 'e' && Number(nextId) !== S.cur) { setCurrent(Number(nextId)); selectionChanged(); }
   });
-  $('timeInput').onchange = chooseEpochByTime;
-  $('nowBtn').onclick = () => { $('timeInput').value = fmtTimeField(new Date()); chooseEpochByTime(); };
-  $('epochSelect').onchange = onEpochPicked;
 
   for (const id of ['fMin', 'fMax']) $(id).addEventListener('input', () => { S.freqTouched = true; });
   for (const id of ['fMin', 'fMax', 'fN', 'unit', 'perStage', 'unwrap', 'totalSens', 'estDelay', 'b62x']) {
@@ -1077,7 +1141,7 @@ async function main() {
     await backend.init();
     setBadge(backend.kind === 'http' ? 'local Python' : 'Python in browser (Pyodide)', true);
     try { $('version').textContent = 'v' + (await backend.call('version')).version; } catch (e) { /* optional */ }
-    await refreshChannels(true);
+    await refreshChannels();
     const urls = new URLSearchParams(location.search).getAll('url').map((u) => u.trim()).filter(Boolean);
     if (urls.length) { $('urlInput').value = urls[0]; await loadUrls(urls); }
   } catch (e) {

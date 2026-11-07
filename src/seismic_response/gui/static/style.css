@@ -58,10 +58,25 @@ code { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: .
 .badge.ok { color: var(--ok); }
 
 .layout {
-  display: grid; grid-template-columns: 340px minmax(0, 1fr); gap: 16px;
-  padding: 16px; max-width: 1500px; margin: 0 auto; align-items: start;
+  display: grid; grid-template-columns: 340px minmax(0, 1fr) 280px;
+  grid-template-areas: "left main right"; gap: 16px;
+  padding: 16px; max-width: 1780px; margin: 0 auto; align-items: start;
 }
-@media (max-width: 900px) { .layout { grid-template-columns: minmax(0, 1fr); } }
+.controls-left { grid-area: left; }
+.results { grid-area: main; }
+.controls-right { grid-area: right; }
+@media (max-width: 1200px) {
+  .layout {
+    grid-template-columns: 340px minmax(0, 1fr); grid-template-rows: auto 1fr;
+    grid-template-areas: "left main" "right main";
+  }
+}
+@media (max-width: 900px) {
+  .layout {
+    grid-template-columns: minmax(0, 1fr); grid-template-rows: none;
+    grid-template-areas: "left" "right" "main";
+  }
+}
 
 .controls, .results {
   background: var(--surface); border: 1px solid var(--border); border-radius: 10px; padding: 14px;
@@ -81,7 +96,7 @@ select[size] { padding: .15rem; }
 .field { margin-top: .5rem; }
 .field-label { display: block; font-size: .85rem; color: var(--muted); }
 .sidlist {
-  margin-top: .2rem; max-height: 9.5rem; min-height: 2.2rem; overflow-y: auto;
+  margin-top: .2rem; min-height: 2.2rem; max-height: 32rem; overflow-y: auto;
   border: 1px solid var(--border); border-radius: 6px; background: var(--surface);
 }
 .sid-row { display: flex; align-items: center; gap: .4rem; padding: 0 .4rem; border-left: 3px solid transparent; cursor: pointer; }
@@ -95,6 +110,12 @@ button.sid-name {
 }
 button.sid-name:hover:not(:disabled) { background: transparent; text-decoration: underline; }
 .sid-row.current button.sid-name { font-weight: 600; }
+.sid-row.group { font-weight: 600; }
+.sid-row.group:not(:first-child) { border-top: 1px solid var(--border); }
+.sid-row.epoch { padding-left: 1.2rem; gap: .35rem; font-size: .82rem; font-variant-numeric: tabular-nums; }
+.sid-row.epoch .sid-swatch { width: 12px; }
+.sid-chevron { flex: none; width: .9em; color: var(--muted); text-align: center; }
+.sid-count { flex: none; font-size: .75rem; font-weight: 400; color: var(--muted); font-variant-numeric: tabular-nums; }
 button { cursor: pointer; }
 button:hover:not(:disabled) { background: var(--surface-2); }
 button:disabled { opacity: .5; cursor: not-allowed; }
@@ -125,7 +146,9 @@ details > button { margin-top: .6rem; }
 .msg.error { color: var(--err-text); }
 .msg.ok { color: var(--ok); }
 
-.toolbar { display: flex; align-items: center; gap: .6rem; margin-bottom: .5rem; }
+.toolbar { display: flex; align-items: flex-start; gap: .6rem; margin-bottom: .5rem; }
+.title-line { display: flex; align-items: center; flex-wrap: wrap; }
+.title-line .sid-swatch { margin-right: .5rem; }
 .title-range { display: inline-block; margin-left: .75rem; padding-left: .75rem; border-left: 1px solid var(--border); font-weight: 400; font-size: .85rem; color: var(--muted); }
 .toolbar h2 { margin: 0; font-size: 1rem; overflow-wrap: anywhere; }
 .menu { position: relative; }
@@ -212,6 +235,8 @@ tr.off td:first-child { opacity: 1; }
 .legend-text { fill: var(--text); font-size: 11px; font-family: system-ui, sans-serif; }
 .cursor { stroke: var(--axis); stroke-width: 1; stroke-dasharray: 3 3; }
 .plot-bg { fill: var(--surface); }
+.export-title { fill: var(--text); font-size: 13px; font-weight: 600; font-family: system-ui, sans-serif; }
+.export-title-sub { fill: var(--muted); font-size: 11px; font-weight: 400; }
 
 button.mini { padding: 0 .3rem; font-size: .75rem; width: 3.4em; text-align: center; } /* fixed width: label switches between All and None */
 th.usecol, td:first-child { width: 1%; padding-left: .3rem; padding-right: .3rem; text-align: center; }

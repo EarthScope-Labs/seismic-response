@@ -21,7 +21,7 @@
 </header>
 
 <main class="layout">
-  <aside class="controls" aria-label="Controls">
+  <aside class="controls controls-left" aria-label="Controls">
 
     <section>
       <h2>1 · Response source</h2>
@@ -30,7 +30,6 @@
         <button type="button" id="openBtn" class="primary">Choose…</button>
         <input type="file" id="fileInput" multiple hidden>
       </div>
-      <button type="button" id="clearBtn" title="Remove all loaded response metadata" disabled>Clear loaded responses</button>
       <label>Response file URL
         <div class="inline">
           <input id="urlInput" type="url" placeholder="https://…" spellcheck="false" autocomplete="off">
@@ -57,28 +56,55 @@
           cross-origin requests.</p>
       </details>
       <p id="loadMsg" class="msg" role="status"></p>
+      <button type="button" id="clearBtn" title="Remove all loaded response metadata" disabled>Clear loaded responses</button>
     </section>
 
     <section>
-      <h2>2 · Channel &amp; time</h2>
+      <h2>2 · Channel &amp; epoch</h2>
       <label>FDSN Source ID filter
         <input id="sidFilter" placeholder="e.g. FDSN:IU_ANMO_*  (glob)" spellcheck="false">
       </label>
       <div class="field">
-        <span id="sidLabel" class="field-label">Responses (tick to compare)</span>
+        <span id="sidLabel" class="field-label">Responses (tick epochs to keep for comparison)</span>
         <div id="sidList" class="sidlist" role="group" aria-labelledby="sidLabel"></div>
       </div>
-      <label>Evaluation time (UTC)
-        <div class="inline">
-          <input id="timeInput" type="text" placeholder="YYYY-MM-DD hh:mm:ss" pattern="\d{4}-\d\d-\d\d([ T]\d\d:\d\d(:\d\d)?)?" maxlength="19" autocomplete="off" spellcheck="false">
-          <button type="button" id="nowBtn">Now</button>
-        </div>
-      </label>
-      <label>Epoch
-        <select id="epochSelect" aria-label="Epochs"></select>
-      </label>
-      <p id="epochMsg" class="hint"></p>
     </section>
+  </aside>
+
+  <section class="results" aria-live="polite">
+    <div class="toolbar">
+      <h2 id="plotTitle">No response loaded</h2>
+      <span class="spacer"></span>
+      <div class="menu">
+        <button type="button" id="exportBtn" aria-haspopup="true" aria-expanded="false" disabled>Export ▾</button>
+        <div id="exportMenu" class="menu-list" hidden>
+          <button type="button" data-export="fap">Text: freq / amp / phase</button>
+          <button type="button" data-export="ap">Text: amplitude &amp; phase</button>
+          <button type="button" data-export="cs">Text: complex spectra</button>
+          <button type="button" data-export="svg">Plot as SVG</button>
+          <button type="button" data-export="png">Plot as PNG</button>
+        </div>
+      </div>
+    </div>
+
+    <div id="alerts"></div>
+    <div id="plotWrap" class="plotwrap">
+      <div id="placeholder" class="placeholder">
+        Load a StationXML, RESP or SAC PZ file (or fetch one from an FDSN service), then pick a channel.
+      </div>
+      <svg id="plot" role="img" aria-label="Bode plot of the instrument response" hidden></svg>
+      <div id="tip" class="tip" hidden></div>
+    </div>
+
+    <div id="summary" class="summary"></div>
+    <div class="tablewrap"><table id="stageTable" hidden>
+      <caption>Stages<span id="stageFor" class="stage-for" hidden></span></caption>
+      <thead><tr><th class="usecol"><button type="button" id="useAll" class="mini" aria-label="Select or deselect all stages"></button></th><th>Stage</th><th>Type</th><th>Gain</th><th>Gain freq (Hz)</th><th>Units (in → out)</th><th>Rate (Hz)</th></tr></thead>
+      <tbody></tbody>
+    </table></div>
+  </section>
+
+  <aside class="controls controls-right" aria-label="Frequencies and options">
 
     <section>
       <h2>3 · Frequencies</h2>
@@ -112,40 +138,6 @@
       <label>Polynomial (B62) input value <input id="b62x" type="number" value="1" step="any"></label>
     </section>
   </aside>
-
-  <section class="results" aria-live="polite">
-    <div class="toolbar">
-      <h2 id="plotTitle">No response loaded</h2>
-      <span class="spacer"></span>
-      <div class="menu">
-        <button type="button" id="exportBtn" aria-haspopup="true" aria-expanded="false" disabled>Export ▾</button>
-        <div id="exportMenu" class="menu-list" hidden>
-          <button type="button" data-export="fap">Text: freq / amp / phase</button>
-          <button type="button" data-export="ap">Text: amplitude &amp; phase</button>
-          <button type="button" data-export="cs">Text: complex spectra</button>
-          <button type="button" data-export="svg">Plot as SVG</button>
-          <button type="button" data-export="png">Plot as PNG</button>
-        </div>
-      </div>
-    </div>
-
-    <div id="alerts"></div>
-    <div id="plotWrap" class="plotwrap">
-      <div id="placeholder" class="placeholder">
-        Load a StationXML, RESP or SAC PZ file (or fetch one from an FDSN service), then pick a channel.
-      </div>
-      <svg id="plot" role="img" aria-label="Bode plot of the instrument response" hidden></svg>
-      <div id="tip" class="tip" hidden></div>
-    </div>
-
-    <div id="summary" class="summary"></div>
-    <div id="instrument" class="summary" hidden></div>
-    <div class="tablewrap"><table id="stageTable" hidden>
-      <caption>Stages<span id="stageFor" class="stage-for" hidden></span></caption>
-      <thead><tr><th class="usecol"><button type="button" id="useAll" class="mini" aria-label="Select or deselect all stages"></button></th><th>Stage</th><th>Type</th><th>Gain</th><th>Gain freq (Hz)</th><th>Units (in → out)</th><th>Rate (Hz)</th></tr></thead>
-      <tbody></tbody>
-    </table></div>
-  </section>
 </main>
 
 <footer class="foot">Computed with <a href="https://github.com/EarthScope-Labs/seismic-response" target="_blank" rel="noopener"><code>seismic-response</code></a> <span id="version"></span></footer>
@@ -170,22 +162,20 @@
         server must allow cross-origin requests.
         <em>Fetch from an FDSN web service</em> queries a station service for network, station, location and
         channel (<code>*</code> and <code>?</code> wildcards allowed; an empty location means <code>--</code>).
-        If an evaluation time is set the query is limited to that time. The service must allow cross-origin
-        requests.</dd>
-      <dt>2 · Channel &amp; time</dt>
-      <dd>Each loaded file or fetch is kept separate: a Source ID that appears in more than one is listed once per
-        source and numbered (<em>#1</em>, <em>#2</em>, …), and hovering over an entry shows the file name or
-        service query it came from. Click a row (or use the up and down arrow keys) to switch to that response, the
-        <em>current</em> one (highlighted). A ticked box means the response is plotted: the current row is always
-        ticked, and ticking another row keeps both in the plot for comparison. Ticked rows stay plotted when you
-        select another row, and unticked ones are replaced. Unticking the current row makes another ticked row
-        current. The epoch choice, stage table, summary
-        and text export follow the current response, while the others use the epoch at the evaluation time with all
-        stages included. The Source ID filter is a glob, or a substring when it has no wildcards; ticks are kept
-        while filtering and only visible ticked responses are plotted. The evaluation time is UTC
-        (a date alone means 00:00:00). The epoch containing that time is used; if several overlap, the
-        shortest wins, as in evalresp. If none covers the time, the nearest epoch is shown. Choosing an epoch
-        by hand moves the time inside it.</dd>
+        The service must allow cross-origin requests.</dd>
+      <dt>2 · Channel &amp; epoch</dt>
+      <dd>Each Source ID is listed with its metadata epochs (UTC) beneath it; click a Source ID, or use the left and
+        right arrow keys, to expand or collapse it. Each loaded file or fetch is kept separate: a Source ID that
+        appears in more than one is listed once per source and numbered (<em>#1</em>, <em>#2</em>, …), and
+        hovering over an entry shows the file name or service query it came from. Click an epoch (or use the up
+        and down arrow keys) to make it the <em>current</em> one (highlighted). The current epoch is always
+        plotted. A ticked box means the epoch is kept in the plot when you select another epoch; unticked epochs
+        are replaced. Ticking an epoch, of the same or another Source ID, also ticks the current one, so both
+        stay in the plot for comparison. The box beside a Source ID ticks or unticks all its epochs. The stage
+        table, summary and text export follow the
+        current epoch, while the others are plotted with all stages included. The Source ID filter is a glob, or a
+        substring when it has no wildcards; ticks are kept while filtering and only visible ticked epochs are
+        plotted.</dd>
       <dt>3 · Frequencies</dt>
       <dd>Minimum and maximum in Hz, number of points (1–20000), and log or linear spacing. Log spacing needs
         values above zero. Until you edit the range, the maximum is 1.1 × the channel's Nyquist frequency. A
@@ -240,7 +230,8 @@
     <h3>Export</h3>
     <p>Text formats follow evalresp: <em>freq / amp / phase</em> (one file), <em>amplitude &amp; phase</em>
       (the AMP and PHASE listings in one file) and <em>complex spectra</em> (real and imaginary parts). The
-      plot exports as SVG or PNG as displayed.</p>
+      plot exports as SVG or PNG as displayed, with its title above. File names end with the current epoch's start time (UTC,
+      <code>YYYYMMDDThhmmssZ</code>).</p>
 
     <h3>Page parameters</h3>
     <dl>

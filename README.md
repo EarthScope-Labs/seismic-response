@@ -84,10 +84,10 @@ The browser version of each release is published to GitHub Pages at
 (for example `python -m http.server -d site/`); opening `index.html` from disk does not work.
 
 Load files by dropping them on the page, enter a file URL, or fetch from an FDSN station web service. Choose
-an FDSN Source ID and a point in time (the epoch containing it is chosen as in evalresp), then set the
+an epoch of an FDSN Source ID from the list, then set the
 frequency range, output unit and options, and tick the stages to include in the stage table. The plot shows
-amplitude and phase with a hover read-out; individual stages can be overlaid; tick several loaded responses to
-overlay them for comparison; results export as evalresp text
+amplitude and phase with a hover read-out; individual stages can be overlaid; tick several epochs, of the same
+or different Source IDs, to overlay them for comparison; results export as evalresp text
 (FAP, AP, complex), SVG or PNG.
 
 A link can open the page with files already loaded using the `url` parameter (repeatable, percent-encoded),
