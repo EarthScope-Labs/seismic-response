@@ -66,7 +66,8 @@ cat station.xml | pyevalresp '*' 'BH?' 2020 5 0.01 10 50 -stdio -x
 Run `pyevalresp` without arguments for the full option list. Differences from the C program:
 messages go to stderr and a request matching no channel prints a warning. Also, `-u` defaults to `def`
 (the units documented in the response) rather than evalresp's `vel`; pass `-u vel` to get evalresp's
-behavior.
+behavior. A response whose input units are not ground motion (pressure, counts, none documented, ...)
+therefore evaluates with no `-u`, where evalresp fails and asks for `-u def`.
 
 `seismic-response` is the umbrella command: `seismic-response info FILE [-s]` lists channels and stages,
 `seismic-response evalresp ...` is `pyevalresp`, and `seismic-response gui [FILE ...]` starts the GUI.
@@ -104,15 +105,16 @@ refused). On a static host it loads Pyodide from a CDN and runs the package in t
   response (equivalent to `def` in evalresp): counts per m/s for a velocity sensor, counts per m/s² for
   an accelerometer, counts per pascal for a pressure sensor, and so on. Any documented unit, or none, is
   accepted. This applies to the library (`evaluate()`), `pyevalresp`, the web API and the GUI. evalresp
-  defaults to `vel`; pass `-u vel` (or `unit="vel"`) for that, subject to the next point.
-* **No unconverted responses for evaluation in `dis`, `vel` or `acc`.** These require the first stage
-  that documents input units to use a ground-motion unit: `M`, `M/S`, `M/SEC`, or an acceleration form (`M/S**2`,
-  `M/S^2`, `M/S2`, `M/S/S` and their `SEC` equivalents), each with an optional `N`, `M` or `C` prefix. The
-  unit symbol is the text before the first space, hyphen, comma or parenthesis, so a description is
-  optional. Any other input unit, or none, fails with an error. evalresp makes an exception for pressure
-  (`PA`, `KPA`), tesla (`T`, `NT`), degrees C, counts and volts inputs, and for responses with no
-  documented input units: it returns them unconverted, silently for `vel` (its default) and with a
-  warning for `dis` and `acc`. This package does not; use (the default) `def` for those responses.
+  defaults to `vel`; pass `-u vel` (or `unit="vel"`) for that.
+
+  Because evalresp 5.1.0 refuses `dis`, `vel` and `acc` for a response whose input units are not ground
+  motion, its default fails on pressure, tesla, degrees C, counts or volts inputs and on responses with no
+  documented input units; this package evaluates them as documented. Requesting `dis`, `vel` or `acc`
+  explicitly fails here too. These require the first stage that documents input units to use a
+  ground-motion unit: `M`, `M/S`, `M/SEC`, or an acceleration form (`M/S**2`, `M/S^2`, `M/S2`, `M/S/S` and
+  their `SEC` equivalents), each with an optional `N`, `M` or `C` prefix. The unit symbol is the text
+  before the first space, hyphen, comma or parenthesis, so a description is optional. Any other input
+  unit, or none, is an error; use `def` for those responses.
 
 ## Limitations
 

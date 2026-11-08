@@ -420,6 +420,7 @@ def _run_evalresp(a: _Args) -> int:
         stages = (a.start_stage, a.stop_stage if a.stop_stage else a.start_stage)
 
     results = []
+    matched = False
     status = EXIT_OK
     for name, data in sources:
         try:
@@ -429,6 +430,7 @@ def _run_evalresp(a: _Args) -> int:
             status = status or _exit_code(exc)
             continue
         for chan in _select(channels, sncls, None, when):
+            matched = True
             try:
                 res = evaluate(
                     chan,
@@ -446,7 +448,7 @@ def _run_evalresp(a: _Args) -> int:
                 continue
             results.append((name, res))
 
-    if not results:
+    if not matched:
         log.warning("No channels matched the requested stations, channels and time")
 
     for name, res in results:

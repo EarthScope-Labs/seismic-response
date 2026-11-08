@@ -82,6 +82,17 @@ def test_time_selects_epoch_and_open_epoch_has_none_after_gap(run):
     assert rc == 0 and "No channels matched" in err
 
 
+def test_non_ground_motion_response_needs_default_units(run):
+    pz = str(DATA / "evalresp" / "station-pz-zero-freq.xml")
+    args = ("I53H1", "BDF", "2020", "1", "0.1", "1", "3", "-f", pz, "-r", "cs")
+    rc, out, err = run(*args, "-u", "vel")
+    assert rc == cli.EXIT_VALIDATION
+    assert "not ground motion" in err and "No channels matched" not in err
+    assert not list(run.dir.glob("SPECTRA.*"))
+    rc, out, err = run(*args)
+    assert rc == 0 and (run.dir / "SPECTRA.IM.I53H1..BDF").exists()
+
+
 def test_wildcards_network_and_location_filters(run):
     assert run("*", "B*", "2000", "100", "1", "1", "1", "-f", ANMO, "-n", "II", "-r", "fap")[0] == 0
     assert not list(run.dir.glob("FAP.*"))  # wrong network: nothing
