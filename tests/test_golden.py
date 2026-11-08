@@ -8,6 +8,7 @@ import pytest
 from conftest import DATA, load_fixture
 
 import seismic_response as sr
+from seismic_response import units
 from seismic_response.timeutil import parse_iso_time
 
 GOLDEN = json.loads((DATA / "golden" / "golden.json").read_text(encoding="utf-8"))
@@ -45,6 +46,11 @@ def _compare(rows_c, values, freqs, rtol=2e-6, floor=1e-9, noise=1e-14):
     assert worst <= rtol, f"max relative error {worst:.3e}"
 
 
+def _first_input_is_motion(channel):
+    text = next((s.input_units for s in channel.stages if s.sequence != 0 and s.input_units), None)
+    return units.classify_units(text)[0] in (units.DIS, units.VEL, units.ACC)
+
+
 @pytest.mark.parametrize("entry", GOLDEN, ids=[_id(e) for e in GOLDEN])
 def test_matches_c_evalresp(entry):
     net, sta, loc, cha = entry["nslc"].split(".")
@@ -60,6 +66,11 @@ def test_matches_c_evalresp(entry):
     stages = case.get("stages")
     if stages and stages[1] is None:  # evalresp: "-stage N" selects only stage N
         stages = (stages[0], stages[0])
+    if case["unit"] != "def" and not _first_input_is_motion(found[0]):
+        # Deliberate difference: evalresp returns such a response unconverted.
+        with pytest.raises(sr.ResponseValueError, match="not ground motion"):
+            sr.evaluate(found[0], freqs, unit=case["unit"])
+        return
     res = sr.evaluate(
         found[0],
         freqs,

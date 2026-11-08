@@ -272,7 +272,7 @@ def _epoch_time(chan):
 def check_file(task):
     """Compare all CASES for the channel epochs of a task; returns (stats, output lines)."""
     binary, rtol, verbose = task[3:]
-    stats = dict(ok=0, bad=0, both_error=0, only_c_error=0, only_py_error=0)
+    stats = dict(ok=0, bad=0, both_error=0, only_c_error=0, only_py_error=0, deliberate=0)
     return _check_epochs(task, stats, lambda source, index, work:
                          _check_channel(source, index, work, binary, rtol, verbose))
 
@@ -283,7 +283,7 @@ def _check_channel(source, index, work, binary, rtol, verbose):
     channels = source.channels
     chan = channels[index]
     when = _epoch_time(chan)
-    stats = dict(ok=0, bad=0, both_error=0, only_c_error=0, only_py_error=0)
+    stats = dict(ok=0, bad=0, both_error=0, only_c_error=0, only_py_error=0, deliberate=0)
     lines = []
     for case in CASES:
         if not applies(case, chan, Path(file).name):
@@ -301,6 +301,11 @@ def _check_channel(source, index, work, binary, rtol, verbose):
         elif rows_c is None:
             stats["only_c_error"] += 1
             lines.append(f"C ERROR ONLY {label}\n   C : {err_c[:200]}")
+        elif rows_p is None and "not ground motion" in err_p:
+            # evalresp returns such responses unconverted; refusing them is deliberate
+            stats["deliberate"] += 1
+            if verbose:
+                lines.append(f"deliberate  {label}\n   py: {err_p[:200]}")
         elif rows_p is None:
             stats["only_py_error"] += 1
             lines.append(f"PY ERROR ONLY {label}\n   py: {err_p[:200]}")
@@ -357,7 +362,7 @@ def main():
     if args.formats:
         return format_main(args.binary, files, args.jobs)
 
-    stats = dict(ok=0, bad=0, both_error=0, only_c_error=0, only_py_error=0)
+    stats = dict(ok=0, bad=0, both_error=0, only_c_error=0, only_py_error=0, deliberate=0)
     with tempfile.TemporaryDirectory() as root:
         tasks = _file_tasks(files, args.jobs, root, (args.binary, args.rtol, args.v))
         _run_tasks(check_file, tasks, args.jobs, stats)

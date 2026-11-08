@@ -134,10 +134,11 @@ inputs, `-ts`, `-use-estimated-delay` and stage ranges.
   2*pi*f. This package matches the whole unit symbol (the text before the first space, hyphen, comma or
   parenthesis) against the known spellings: `M`, `M/S`, `M/SEC`, and the acceleration forms `M/S**2`,
   `M/S^2`, `M/S2`, `M/S/S` and their `SEC` equivalents, each with an optional `N`, `M` or `C` prefix.
-  Anything else is unrecognized and the request fails with an "undefined units" error instead of a wrong
-  answer. Results for `def` (the default) are not affected, and neither are responses that use the standard
-  spellings. As in evalresp, a response whose input is not ground motion (pressure, tesla, degrees C, ...)
-  is left unconverted when `dis` or `acc` is requested, with a warning.
+  Anything else is not ground motion, and the request fails with an error instead of a wrong answer. This
+  includes pressure, tesla, degrees C or any other unit, and a response with no documented input units;
+  evalresp returns pressure, tesla and degrees C responses unconverted. The unit text may be a bare symbol
+  with no description. Results for `def` (the default) are not affected for any unit, and neither are
+  responses that use the standard spellings.
 
 ## Limitations
 

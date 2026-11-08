@@ -248,6 +248,7 @@ class _Work:
     applied_corr: float = 0.0
     sint: float = 0.0
     unit_scale: float = 1.0
+    first_units_class: int = U.DEFAULT
     warnings: List[str] = field(default_factory=list)
 
 
@@ -324,12 +325,18 @@ def _prepare(channel: Channel, opts: _Options) -> _Work:
     if not stages_in:
         raise ResponseValueError(f"{ident}: channel has no response stages")
 
-    # Unit scale factor comes from the first stage that documents units
-    for st in stages_in:
-        if st.filter is not None and st.input_units is not None:
-            if opts.unit != U.DEFAULT:
-                work.unit_scale = U.classify_units(st.input_units)[1]
-            break
+    # A requested motion unit needs the first numbered stage that documents input units (not stage 0)
+    # to be ground motion; its unit scale applies to the whole response.
+    if opts.unit != U.DEFAULT:
+        text = next((s.input_units for s in stages_in if s.sequence != 0 and s.input_units), None)
+        unit_class, scale = U.classify_units(text)
+        if unit_class not in (U.DIS, U.VEL, U.ACC):
+            raise ResponseValueError(
+                f"{ident}: input units ('{text or 'none documented'}') are not ground motion; "
+                f"cannot convert to {U.motion_unit_name(opts.unit)}"
+            )
+        work.first_units_class = unit_class
+        work.unit_scale = scale
 
     prev: Optional[_WStage] = None
     for st in stages_in:
@@ -946,18 +953,7 @@ def evaluate(
     if not freqs:
         raise ResponseValueError("No frequencies requested")
 
-    first_units_class = U.DEFAULT
-    if opts.unit != U.DEFAULT:
-        # Input units of the first stage that has any; the overall sensitivity (stage 0) is not used.
-        numbered = [s for s in work.stages if s.seq != 0]
-        first_units_class = next((s.in_class for s in numbered if s.in_class != U.UNDEF), U.UNDEF)
-        if opts.unit in (U.DIS, U.ACC) and first_units_class not in (U.DIS, U.VEL, U.ACC):
-            units_text = next((s.in_units for s in numbered if s.in_units), "")
-            _warn(
-                work,
-                f"{ident}: input units ('{units_text}') are not ground motion, "
-                f"response is not converted to {U.motion_unit_name(opts.unit)}",
-            )
+    first_units_class = work.first_units_class
     total_sens = work.sensit if use_total_sensitivity else work.calc_sensit
 
     values: List[complex] = []

@@ -110,13 +110,13 @@ def test_polynomial_negative_slope_keeps_its_sign():
 
 
 @pytest.mark.parametrize("unit", ["vel", "dis", "acc"])
-def test_non_ground_motion_input_is_not_converted(unit):
-    c = chan(lowpass(1.0, units=("PA - Pascals", VOLTS)))
+@pytest.mark.parametrize("input_units", ["PA - Pascals", "C", "C - Degrees Centigrade", "T", "DEGF", "FURLONGS"])
+def test_non_ground_motion_input_is_refused_when_converting(input_units, unit):
+    c = chan(lowpass(1.0, units=(input_units, VOLTS)))
     freqs = [0.1, 1.0, 10.0]
-    res = c.evaluate(freqs, unit=unit)
-    assert res.values == c.evaluate(freqs, unit="def").values
-    warned = any("not ground motion" in w for w in res.info.warnings)
-    assert warned == (unit != "vel")
+    with pytest.raises(sr.ResponseValueError, match="not ground motion"):
+        c.evaluate(freqs, unit=unit)
+    assert len(c.evaluate(freqs, unit="def").values) == len(freqs)
 
 
 def test_units_come_from_the_first_stage_that_has_them():
@@ -131,9 +131,9 @@ def test_units_come_from_the_first_stage_that_has_them():
 def test_overall_sensitivity_units_do_not_select_the_conversion(unit):
     c = chan(Stage(1, gain=Gain(2.0, 1.0)), Stage(2, gain=Gain(5.0, 1.0)),
              Stage(0, "M/S - Velocity", COUNTS, gain=Gain(10.0, 1.0)))
-    res = c.evaluate([0.1, 1.0, 10.0], unit=unit)
-    assert res.values == [10.0 + 0j] * 3
-    assert any("not ground motion" in w for w in res.info.warnings) == (unit != "vel")
+    with pytest.raises(sr.ResponseValueError, match="none documented"):
+        c.evaluate([0.1, 1.0, 10.0], unit=unit)
+    assert c.evaluate([0.1, 1.0, 10.0], unit="def").values == [10.0 + 0j] * 3
 
 
 def _pz_channel(zeros, poles, gain_freq=5.0):
@@ -284,7 +284,7 @@ def test_per_stage_values_multiply_to_the_total(anmo):
     "stages, message",
     [
         ([Stage(1, VEL, VOLTS, PolesZeros("laplace_rad", [], [-1 + 0j], 1.0, 0.0), gain=Gain(0.0, 1.0))], "zero stage gain"),
-        ([Stage(1, COUNTS, COUNTS, FIR("A", [1.0]), gain=Gain(1.0, 0.0))], "decimation"),
+        ([Stage(1, VEL, COUNTS, FIR("A", [1.0]), gain=Gain(1.0, 0.0))], "decimation"),
         ([Stage(1, VEL, VOLTS, PolesZeros("laplace_rad", [], [-1 + 0j], 1.0, 0.0))], "no stage gain"),
         (
             [
@@ -293,7 +293,7 @@ def test_per_stage_values_multiply_to_the_total(anmo):
             ],
             "units mismatch",
         ),
-        ([Stage(1, "FURLONGS", VOLTS, PolesZeros("laplace_rad", [], [-1 + 0j], 1.0, 0.0), gain=Gain(1, 1))], "undefined units"),
+        ([Stage(1, "FURLONGS", VOLTS, PolesZeros("laplace_rad", [], [-1 + 0j], 1.0, 0.0), gain=Gain(1, 1))], "not ground motion"),
         ([], "no response stages"),
     ],
 )
@@ -468,6 +468,6 @@ def test_double_s_acceleration_units_convert_like_double_star():
 
 def test_unrecognized_motion_like_units_fail_loudly_when_converting():
     ch = _unit_channel("MBAR - millibar")
-    with pytest.raises(sr.ResponseValueError, match="undefined units"):
+    with pytest.raises(sr.ResponseValueError, match="not ground motion"):
         sr.evaluate(ch, [1.0], unit="vel")
     assert len(sr.evaluate(ch, [1.0], unit="def").values) == 1  # default units never classify
