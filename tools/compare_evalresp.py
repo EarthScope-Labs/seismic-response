@@ -17,6 +17,7 @@ results are the same as for a serial run.
 
 import argparse
 import cmath
+import logging
 import math
 import os
 import re
@@ -30,6 +31,9 @@ from pathlib import Path
 
 import seismic_response as sr
 from seismic_response.errors import SeismicResponseError
+
+# Library warnings stay on each result; the logger is silenced to keep output to mismatches.
+logging.getLogger("seismic_response").setLevel(logging.ERROR)
 
 LOG = (0.001, 40, 25, "log")
 
