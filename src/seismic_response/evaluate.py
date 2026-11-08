@@ -56,6 +56,7 @@ __all__ = [
 log = logging.getLogger("seismic_response")
 
 _FIR_NORM_TOL = 0.02  # FIR_NORM_TOL in evalresp
+_RANGE_TOL = 1e-9  # relative slack on a response list's frequency limits
 
 # Stage categories (evalresp's *_TYPE constants)
 _GAIN_ONLY = "gain"
@@ -439,18 +440,37 @@ def _div(a: float, b: float) -> float:
     return a / b
 
 
+def _is_infinite(value: complex) -> bool:
+    return math.isinf(value.real)
+
+
 def _analog_trans(pz: PolesZeros, freq: float) -> complex:
-    """Laplace transform response of poles/zeros (evalresp ``analog_trans``)."""
+    """Laplace transform response of poles/zeros (evalresp ``analog_trans``).
+
+    Zeros and poles at the evaluation point cancel pairwise; excess zeros give 0 and
+    excess poles ``inf`` (see ``_is_infinite``).
+    """
     if pz.kind == LAPLACE_RADIANS:
         freq = 2 * math.pi * freq
     omega = complex(0.0, freq)
     # evalresp starts both products at 1+1i; the common factor cancels in the ratio.
     num = complex(1.0, 1.0)
     den = complex(1.0, 1.0)
+    zeros_at_omega = poles_at_omega = 0
     for z in pz.zeros:
-        num *= omega - z
+        d = omega - z
+        if d == 0:
+            zeros_at_omega += 1
+        else:
+            num *= d
     for p in pz.poles:
-        den *= omega - p
+        d = omega - p
+        if d == 0:
+            poles_at_omega += 1
+        else:
+            den *= d
+    if zeros_at_omega != poles_at_omega:
+        return complex(0.0, 0.0) if zeros_at_omega > poles_at_omega else complex(math.inf, 0.0)
     mod_sq = den.real * den.real + den.imag * den.imag
     t = complex(den.real, -den.imag) * num
     return complex(pz.a0 * _div(t.real, mod_sq), pz.a0 * _div(t.imag, mod_sq))
@@ -535,17 +555,12 @@ def _iir_trans(iir: IIRCoefficients, w: float, sint: float) -> complex:
     return complex(amp * math.cos(phase) * iir.h0, amp * math.sin(phase) * iir.h0)
 
 
-def _polynomial(poly: Polynomial, x: float, ident: str) -> complex:
-    if x <= 0:
-        raise ResponseValueError(
-            f"{ident}: cannot compute blockette 62 response for negative or zero input ({x:f}); "
-            "set b62_x to a positive value"
-        )
+def _polynomial(poly: Polynomial, x: float) -> complex:
+    """First derivative of the MacLaurin polynomial at ``x``; a negative slope has phase 180 degrees."""
     amp = 0.0
     for j in range(1, len(poly.coefficients)):
         amp += poly.coefficients[j] * j * math.pow(x, j - 1)
-    phase = 0.0 if amp >= 0 else math.pi
-    return complex(amp * math.cos(phase), amp * math.sin(phase))
+    return complex(amp, 0.0)
 
 
 def _time_shift(delay: float, w: float) -> complex:
@@ -572,7 +587,7 @@ def _filter_response(ws: _WStage, freq: float, index: int, opts: _Options, ident
         ph = f.phases[index] / 180.0 * math.pi
         out = complex(amp * math.cos(ph), amp * math.sin(ph))
     elif kind == _POLY:
-        out = _polynomial(f, opts.b62_x, ident)
+        out = _polynomial(f, opts.b62_x)
     elif kind == _IIR:
         out = _iir_trans(f, w, ws.sint)
 
@@ -591,6 +606,15 @@ def _filter_response(ws: _WStage, freq: float, index: int, opts: _Options, ident
 
 
 # --------------------------------------------------------------------------- normalization
+
+
+def _warn_above_nyquist(work: _Work, st: _WStage, freq: float, ident: str) -> None:
+    if st.deci is not None and st.sint > 0.0 and freq > 0.5 / st.sint:
+        nyquist = 0.5 / st.sint
+        _warn(
+            work,
+            f"{ident}: Stage {st.seq} is normalized at {freq:g} Hz, above its Nyquist frequency of {nyquist:g} Hz",
+        )
 
 
 def _normalize(work: _Work, opts: _Options, ident: str) -> None:
@@ -646,25 +670,36 @@ def _normalize(work: _Work, opts: _Options, ident: str) -> None:
             if st.kind == _PZ:
                 flt.a0 = 1.0
                 df = _analog_trans(flt, gain.frequency)
+                if _is_infinite(df):
+                    raise ResponseValueError(
+                        f"{ident}: gain frequency is at a pole of the analog filter (stage {st.seq})"
+                    )
                 if df == 0:
                     raise ResponseValueError(
                         f"{ident}: gain frequency of zero found in bandpass analog filter (stage {st.seq})"
                     )
                 of = _analog_trans(flt, f)
+                if _is_infinite(of):
+                    raise ResponseValueError(
+                        f"{ident}: channel sensitivity frequency is at a pole of the analog filter (stage {st.seq})"
+                    )
                 if of == 0:
                     raise ResponseValueError(
                         f"{ident}: channel sensitivity frequency found with bandpass analog filter (stage {st.seq})"
                     )
             elif st.kind == _IIR_PZ:
+                _warn_above_nyquist(work, st, gain.frequency, ident)
                 flt.a0 = 1.0
                 df = _iir_pz_trans(flt, 2 * math.pi * gain.frequency, st.sint)
                 of = _iir_pz_trans(flt, w, st.sint)
             elif st.kind == _FIR and flt.coefficients:
+                _warn_above_nyquist(work, st, gain.frequency, ident)
                 flt.h0 = 1.0
                 trans = _fir_sym_trans if flt.symmetry in ("B", "C") else _fir_asym_trans
                 df = trans(flt, 2 * math.pi * gain.frequency, st.sint)
                 of = trans(flt, w, st.sint)
             elif st.kind == _IIR:
+                _warn_above_nyquist(work, st, gain.frequency, ident)
                 flt.h0 = 1.0
                 df = _iir_trans(flt, 2 * math.pi * gain.frequency, st.sint)
                 of = _iir_trans(flt, w, st.sint)
@@ -702,7 +737,7 @@ def _normalize(work: _Work, opts: _Options, ident: str) -> None:
 
 def _convert_to_units(inp: int, out: int, value: complex, w: float) -> complex:
     """Convert the response to the requested motion unit (evalresp ``convert_to_units``)."""
-    if out == U.DEFAULT:
+    if out == U.DEFAULT or inp not in (U.DIS, U.VEL, U.ACC):
         return value
     if inp == U.DIS:
         if out == U.DIS:
@@ -780,7 +815,9 @@ def _interpolate_list(
     if any(b <= a for a, b in zip(freqs, freqs[1:])):
         raise ResponseValueError(f"{ident}: response list frequencies must be strictly increasing to interpolate")
 
-    lo, hi = freqs[0], freqs[-1]
+    # values within rounding error of a limit are inside the range
+    lo = freqs[0] - _RANGE_TOL * abs(freqs[0])
+    hi = freqs[-1] + _RANGE_TOL * abs(freqs[-1])
     used = [f for f in requested if lo <= f <= hi]
     below = sum(1 for f in requested if f < lo)
     above = sum(1 for f in requested if f > hi)
@@ -872,7 +909,8 @@ def evaluate(
         For asymmetric FIR filters use the estimated delay instead of the
         correction applied.
     b62_x:
-        Input value at which a polynomial (blockette 62) response is evaluated.
+        Input value at which a polynomial (blockette 62) response is evaluated; any
+        value is accepted, including the default 0.
     per_stage:
         Also return each selected stage's contribution in ``stage_values``.
         The product of the per-stage values equals the total response; unit
@@ -908,7 +946,16 @@ def evaluate(
     if not freqs:
         raise ResponseValueError("No frequencies requested")
 
-    first_units_class = first.in_class if opts.unit != U.DEFAULT else U.DEFAULT
+    first_units_class = U.DEFAULT
+    if opts.unit != U.DEFAULT:
+        first_units_class = next((s.in_class for s in work.stages if s.in_class != U.UNDEF), U.UNDEF)
+        if opts.unit in (U.DIS, U.ACC) and first_units_class not in (U.DIS, U.VEL, U.ACC):
+            units_text = next((s.in_units for s in work.stages if s.in_units), "")
+            _warn(
+                work,
+                f"{ident}: input units ('{units_text}') are not ground motion, "
+                f"response is not converted to {U.motion_unit_name(opts.unit)}",
+            )
     total_sens = work.sensit if use_total_sensitivity else work.calc_sensit
 
     values: List[complex] = []
@@ -918,9 +965,17 @@ def evaluate(
     for idx, fr in enumerate(freqs):
         w = 2 * math.pi * fr
         val = complex(1.0, 0.0)
+        infinite = False
         for ws in selected:
             r = _filter_response(ws, fr, idx, opts, ident)
             if r is not None:
+                if ws.kind == _PZ and _is_infinite(r):
+                    infinite = True
+                    _warn(
+                        work,
+                        f"{ident}: Stage {ws.seq} has a pole at {fr:g} Hz with no matching zero; "
+                        "the response is infinite there",
+                    )
                 val = val * r
             if stage_values is not None and ws.seq:
                 contrib = r if r is not None else complex(1.0, 0.0)
@@ -931,6 +986,8 @@ def evaluate(
                 if ws is first_contrib:
                     contrib = _convert_to_units(first_units_class, opts.unit, contrib * work.unit_scale, w)
                 stage_values[ws.seq].append(contrib)
+        if infinite:
+            val = complex(math.inf, 0.0)
         out = complex(val.real * total_sens * work.unit_scale, val.imag * total_sens * work.unit_scale)
         out = _convert_to_units(first_units_class, opts.unit, out, w)
         values.append(out)

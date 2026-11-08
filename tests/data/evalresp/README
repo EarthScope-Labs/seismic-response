@@ -1,0 +1,9 @@
+Small response files copied unchanged from tests/data in the evalresp repository
+(https://github.com/EarthScope/evalresp, `develop` branch, commit ee809db).  They cover cases
+the files in ../real and ../synthetic do not: a gain-only first stage, a digital stage normalized
+above Nyquist, gain-only channels, polynomial (blockette 62) responses, response lists in
+StationXML, StationXML precision, and analog poles/zeros at zero frequency and with excess poles.
+
+../real already holds other files copied from the same directory.
+
+tools/make_golden.py evaluates these with the C program to produce ../golden/golden.json.

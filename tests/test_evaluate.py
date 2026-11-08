@@ -99,11 +99,67 @@ def test_polynomial_response_follows_the_maclaurin_derivative():
     poly = Stage(1, VOLTS, COUNTS, Polynomial([0.5, 0.1, 0.02]))
     c = chan(poly)
     assert c.evaluate([1.0], unit="def", b62_x=2.0).values[0] == pytest.approx(0.1 + 2 * 0.02 * 2.0)
-    with pytest.raises(sr.ResponseValueError, match="b62_x"):
-        c.evaluate([1.0], unit="def")  # evalresp refuses a zero input value
+    assert c.evaluate([1.0], unit="def").values[0] == pytest.approx(0.1)  # default b62_x is 0
+    assert c.evaluate([1.0], unit="def", b62_x=-2.0).values[0] == pytest.approx(0.1 - 2 * 0.02 * 2.0)
+
+
+def test_polynomial_negative_slope_keeps_its_sign():
     negative = chan(Stage(1, VOLTS, COUNTS, Polynomial([0.0, -0.3])))
     v = negative.evaluate([1.0], unit="def", b62_x=1.0).values[0]
-    assert v.real == pytest.approx(0.3)  # evalresp reports the magnitude with phase pi
+    assert v == complex(-0.3, 0.0)
+
+
+@pytest.mark.parametrize("unit", ["vel", "dis", "acc"])
+def test_non_ground_motion_input_is_not_converted(unit):
+    c = chan(lowpass(1.0, units=("PA - Pascals", VOLTS)))
+    freqs = [0.1, 1.0, 10.0]
+    res = c.evaluate(freqs, unit=unit)
+    assert res.values == c.evaluate(freqs, unit="def").values
+    warned = any("not ground motion" in w for w in res.info.warnings)
+    assert warned == (unit != "vel")
+
+
+def test_units_come_from_the_first_stage_that_has_them():
+    disp = Stage(2, "M - Displacement", VOLTS, lowpass(1.0).filter, gain=Gain(1.0, 0.0))
+    c = chan(Stage(1, gain=Gain(2.0, 0.0)), disp)
+    w = TWO_PI * 0.5
+    ref = c.evaluate([0.5], unit="def").values[0]
+    assert c.evaluate([0.5], unit="vel").values[0] == pytest.approx(ref * complex(0, -1 / w))
+
+
+def _pz_channel(zeros, poles, gain_freq=5.0):
+    pz = PolesZeros("laplace_rad", zeros, poles, a0=1.0, a0_freq=5.0)
+    return chan(Stage(1, VEL, VOLTS, pz, gain=Gain(1.0, gain_freq)))
+
+
+def test_pole_and_zero_at_the_evaluation_frequency_cancel():
+    w = TWO_PI * 2.0
+    plain = _pz_channel([0j], [complex(-0.3, 0.3)])
+    paired = _pz_channel([0j, complex(0, w)], [complex(-0.3, 0.3), complex(0, w)])
+    freqs = [1.0, 2.0, 3.0]
+    assert paired.evaluate(freqs, unit="def").values == pytest.approx(plain.evaluate(freqs, unit="def").values)
+
+
+def test_pole_at_the_evaluation_frequency_without_a_zero_is_infinite():
+    c = _pz_channel([0j], [complex(0, TWO_PI * 2.0)])
+    res = c.evaluate([1.0, 2.0, 3.0], unit="def")
+    assert res.values[1] == complex(math.inf, 0.0)
+    assert math.isfinite(res.values[0].real) and math.isfinite(res.values[2].real)
+    assert any("pole at 2 Hz" in w for w in res.info.warnings)
+
+
+def test_normalizing_at_a_pole_of_an_analog_filter_is_an_error():
+    c = _pz_channel([0j], [complex(0, TWO_PI * 2.0)], gain_freq=2.0)
+    with pytest.raises(sr.ResponseValueError, match="pole of the analog filter"):
+        c.evaluate([1.0], unit="def")
+
+
+def test_normalizing_above_nyquist_warns():
+    pz = PolesZeros("z", [1 + 0j], [0.9938 + 0j], a0=1.0, a0_freq=10.0)
+    stage = Stage(1, COUNTS, COUNTS, pz, Decimation(1.0, 1), Gain(1.0, 10.0))
+    c = chan(stage, Stage(0, gain=Gain(1.0, 0.25)))
+    res = c.evaluate([0.1], unit="def")
+    assert any("above its Nyquist frequency of 0.5 Hz" in w for w in res.info.warnings)
 
 
 def test_response_list_replaces_the_requested_frequencies():
@@ -313,6 +369,17 @@ def test_list_interpolation_reproduces_knots_and_clips_to_the_list_range():
     assert len(res.info.warnings) == 2
     # Without interpolation the listed frequencies are reported
     assert c.evaluate([3.0], unit="def").frequencies == freqs
+
+
+def test_list_interpolation_keeps_requests_within_rounding_of_the_limits():
+    c = _list_channel([1.0, 2.0, 4.0, 8.0], [1.0, 2.0, 3.0, 4.0], [0.0, 10.0, 20.0, 30.0])
+    res = c.evaluate([1.0 * (1 - 1e-12), 4.0, 8.0 * (1 + 1e-12)], unit="def", interpolate_list=True)
+    assert len(res.values) == 3
+    assert abs(res.values[0]) == pytest.approx(1.0)
+    assert abs(res.values[2]) == pytest.approx(4.0)
+    assert not res.info.warnings
+    res = c.evaluate([1.0 * (1 - 1e-6), 4.0], unit="def", interpolate_list=True)
+    assert res.frequencies == [4.0]
 
 
 def test_list_interpolation_is_exact_for_power_law_data_on_uneven_knots():

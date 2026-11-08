@@ -102,16 +102,17 @@ refused). On a static host it loads Pyodide from a CDN and runs the package in t
 
 The numerical code is a port of evalresp's own logic (stage consistency checks, gain/normalization
 handling, FIR/IIR/pole-zero evaluation, unit conversion, phase unwrapping) rather than a re-derivation.
-It is checked against a built evalresp 5.0.1 in two ways:
+It is checked against a built evalresp in two ways:
 
-* **Golden tests** (`tests/test_golden.py`, run everywhere): 169 results captured from the C program for
-  real and synthetic responses over a matrix of options, matched to within the 7 digits it prints
-  (the `-il` results come from an evalresp build that includes the spline fixes).
-* **Live comparison** (`tools/compare_evalresp.py BINARY FILES...`, needs a built C evalresp): 2,509
-  complex-spectrum comparisons over every response in evalresp's own test data plus the synthetic
-  fixtures, and 460 FAP/AP text comparisons (`--formats`, which includes phase unwrapping), with no
-  mismatches. A further 260 comparisons on 26 current channels fetched from the EarthScope station
-  service (8 networks) also matched.
+* **Golden tests** (`tests/test_golden.py`, run everywhere): 369 results captured from the C program
+  (evalresp 5.1.0) for real and synthetic responses and a selection of evalresp's own test responses, over a
+  matrix of options (units, `-ts`, estimated delay, stage ranges, `-il`, `-b62_x`), matched to within the
+  7 digits it prints. Points where both values are below 1e-9 of the response's peak (such as a FIR
+  response at Nyquist) are numerical noise and are not compared.
+* **Live comparison** (`tools/compare_evalresp.py BINARY FILES...`, needs a built C evalresp, 5.1.0):
+  2,842 complex-spectrum comparisons over every response in evalresp's own test data and 381 over this
+  repository's fixtures, and 952 FAP/AP text comparisons on evalresp's test data (`--formats`, which
+  includes phase unwrapping), with no mismatches.
 
 Confirmed matching: Laplace (rad/s and Hz) and Z-transform poles/zeros, asymmetric/even/odd-symmetric
 FIR (including continuation blockettes and delay correction), IIR coefficients, response lists, gain-only
@@ -125,9 +126,6 @@ inputs, `-ts`, `-use-estimated-delay` and stage ranges.
   This applies to the library (`evaluate()`), `pyevalresp`, the web API and the GUI. evalresp defaults to
   `vel` and converts every response to velocity unless `-u def` is given, which is an error for any response
   that cannot be converted to velocity. For evalresp's behavior, pass  `-u vel` (or `unit="vel"`).
-* **StationXML precision.** StationXML is read at full precision. evalresp converts it to RESP text first,
-  rounding every coefficient to six significant digits, which can move values near deep stopband nulls
-  (for example a FIR response at Nyquist). Where it matters, this package is the more exact of the two.
 * **Exact unit symbols.** When you request `-u dis|vel|acc`, the documented input unit of the first stage
   decides whether and how the response is converted. evalresp matches only the *start* of the unit text,
   so `M/S/S` (acceleration) is read as velocity because it begins with `M/S`, and any unit beginning with
@@ -137,13 +135,14 @@ inputs, `-ts`, `-use-estimated-delay` and stage ranges.
   `M/S^2`, `M/S2`, `M/S/S` and their `SEC` equivalents, each with an optional `N`, `M` or `C` prefix.
   Anything else is unrecognized and the request fails with an "undefined units" error instead of a wrong
   answer. Results for `def` (the default) are not affected, and neither are responses that use the standard
-  spellings.
+  spellings. As in evalresp, a response whose input is not ground motion (pressure, tesla, degrees C, ...)
+  is left unconverted when `dis` or `acc` is requested, with a warning.
 
 ## Limitations
 
-* **Polynomial responses (blockette 62)** are implemented from evalresp's source, with unit tests of the
-  formula, but could not be compared against the C program: the evalresp build used for validation crashes
-  on files containing them.
+* **Polynomial responses (blockette 62)** are evaluated at `b62_x` (default 0, any value allowed) as the
+  first derivative of the MacLaurin polynomial; a negative slope is a negative real response, as in
+  evalresp 5.1.0 and later.
 * **Response-list interpolation** (`-il`, or `interpolate_list=True`) resamples a blockette 55 response
   at the requested frequencies with a natural cubic spline in log10(frequency), interpolating
   log10(amplitude) and the unwrapped phase. If any listed frequency or amplitude, or any requested
@@ -163,7 +162,7 @@ inputs, `-ts`, `-use-estimated-delay` and stage ranges.
   (FDSN), which defines the response blockettes that RESP files carry, and the
   [FDSN publications](https://www.fdsn.org/publications/) page.
 * **evalresp**: the [evalresp repository](https://github.com/EarthScope/evalresp) and the
-  [5.0.1 release](https://github.com/EarthScope/evalresp/releases/tag/v5.0.1) this package is validated against.
+  [5.1.0 development version](https://github.com/EarthScope/evalresp/tree/develop) this package is validated against.
 * **SAC poles and zeros**: Goldstein, P., Dodge, D., Firpo, M., and Minner, L. (2003). SAC2000: Signal
   processing and analysis tools for seismologists and engineers. In W. H. K. Lee, H. Kanamori, P. C. Jennings,
   and C. Kisslinger (Eds.), *International Handbook of Earthquake and Engineering Seismology*, Part B, ch. 85.5,
@@ -177,7 +176,7 @@ inputs, `-ts`, `-use-estimated-delay` and stage ranges.
 ```sh
 python -m venv .venv && . .venv/bin/activate
 pip install -e ".[dev]"
-pytest                      # ~280 tests, ~2 s
+pytest                      # ~550 tests, ~2 s
 ruff check src tests tools
 ```
 

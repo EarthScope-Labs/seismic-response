@@ -10,6 +10,7 @@ reference results that the test-suite compares against.
     python tools/make_synthetic.py tests/data/synthetic
 """
 
+import math
 import sys
 from pathlib import Path
 
@@ -30,11 +31,11 @@ VOLTS = "V - Volts"
 COUNTS = "COUNTS - Digital Counts"
 
 
-def e(x):
-    return f"{x:+.6E}"
+def e(x, digits=6):
+    return f"{x:+.{digits}E}"
 
 
-def pz(stage, kind, inp, out, a0, a0f, zeros, poles):
+def pz(stage, kind, inp, out, a0, a0f, zeros, poles, digits=6):
     code = {"A": "A [Laplace Transform (Rad/sec)]", "B": "B [Analog (Hz)]", "D": "D [Digital (Z-transform)]"}[kind]
     lines = [
         f"B053F03     Transfer function type:                {code}",
@@ -47,9 +48,9 @@ def pz(stage, kind, inp, out, a0, a0f, zeros, poles):
         f"B053F14     Number of poles:                       {len(poles)}",
     ]
     for i, z in enumerate(zeros):
-        lines.append(f"B053F10-13  {i:3d}  {e(z.real)}  {e(z.imag)}  {e(0)}  {e(0)}")
+        lines.append(f"B053F10-13  {i:3d}  {e(z.real, digits)}  {e(z.imag, digits)}  {e(0)}  {e(0)}")
     for i, p in enumerate(poles):
-        lines.append(f"B053F15-18  {i:3d}  {e(p.real)}  {e(p.imag)}  {e(0)}  {e(0)}")
+        lines.append(f"B053F15-18  {i:3d}  {e(p.real, digits)}  {e(p.imag, digits)}  {e(0)}  {e(0)}")
     return "\n".join(lines) + "\n"
 
 
@@ -228,6 +229,20 @@ def files():
         + gain(3, 1000.0, 0.0)
         + sensitivity(2.0e6, 0.1),
     )
+
+    # 12-13. A pole on the imaginary axis at exactly 2 Hz (written with full precision so it
+    # equals the evaluation point): with a matching zero the pair cancels, without one the
+    # response is infinite there.  Normalized at 5 Hz, away from the pole.
+    w2 = 2 * math.pi * 2.0
+    for name, sta, zeros in (
+        ("pz_cancel", "SYN12", [0j, complex(0.0, w2)]),
+        ("pz_pole_only", "SYN13", [0j, 0j]),
+    ):
+        out[name] = (
+            (sta, "00", "BHZ"),
+            pz(1, "A", VEL, VOLTS, 1.0, 5.0, zeros, [complex(-0.037, 0.037), complex(0.0, w2)], digits=17)
+            + gain(1, 1200.0, 5.0),
+        )
     return out
 
 

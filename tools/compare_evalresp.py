@@ -16,6 +16,8 @@ results are the same as for a serial run.
 """
 
 import argparse
+import cmath
+import math
 import os
 import re
 import signal
@@ -29,20 +31,61 @@ from pathlib import Path
 import seismic_response as sr
 from seismic_response.errors import SeismicResponseError
 
+LOG = (0.001, 40, 25, "log")
+
+# Keys: unit, freqs (min, max, count, spacing), ts, estdelay, stages (first, last or None), il,
+# b62_x, and only (file name substrings the case is restricted to).  A case with il or b62_x runs
+# only on channels with a response list or polynomial; b62_x is otherwise left at the default.
 CASES = [
-    dict(freqs=(0.001, 40, 25, "log")),
-    dict(freqs=(0.01, 20, 17, "lin")),
-    dict(freqs=(0.005, 15, 21, "log")),
-    dict(freqs=(0.02, 0.02, 1, "log")),
+    dict(unit="vel", freqs=LOG),
+    dict(unit="dis", freqs=(0.01, 20, 17, "log")),
+    dict(unit="acc", freqs=(0.01, 20, 17, "lin")),
+    dict(unit="def", freqs=(0.005, 15, 21, "log")),
+    dict(unit="def", freqs=LOG),
+    dict(unit="def", freqs=(0.01, 20, 17, "lin")),
+    dict(unit="vel", freqs=(0.02, 0.02, 1, "log")),
+    dict(unit="vel", freqs=LOG, ts=True),
+    dict(unit="vel", freqs=LOG, estdelay=True),
+    dict(unit="vel", freqs=LOG, stages=(1, None)),
+    dict(unit="vel", freqs=LOG, stages=(2, 3)),
+    dict(unit="vel", freqs=LOG, stages=(1, 1)),
+    dict(unit="vel", freqs=(0.005, 20, 30, "log"), il=True),
+    # 1e-10 (relative) outside the list's limits of 0.1 and 10 Hz, which evalresp treats as inside
+    dict(unit="def", freqs=(0.09999999999, 10.000000001, 9, "log"), il=True, only=("station-list",)),
+    dict(unit="def", freqs=LOG, b62_x=2.0),
+    dict(unit="def", freqs=LOG, b62_x=-1.0),
+    # evaluation points exactly on a pole (and a coinciding zero) at 2 Hz
+    dict(unit="def", freqs=(1, 4, 4, "lin"), only=("pz_cancel", "pz_pole_only")),
 ]
+
+
+def applies(case, chan, name):
+    """Whether a case is meaningful for a channel of the file called ``name``."""
+    if case.get("il") and not any(isinstance(s.filter, sr.ResponseList) for s in chan.stages):
+        return False
+    if "b62_x" in case and not any(isinstance(s.filter, sr.Polynomial) for s in chan.stages):
+        return False
+    only = case.get("only")
+    return not only or any(key in name for key in only)
 
 
 def _run_c_once(binary, file, chan, when, case, workdir):
     year, jday = when.year, when.timetuple().tm_yday
     mn, mx, n, spacing = case["freqs"]
     cmd = [binary, chan.station, chan.channel, str(year), str(jday), repr(mn), repr(mx), str(n),
-           "-f", str(file), "-u", "def", "-s", spacing, "-r", "cs",
+           "-f", str(file), "-u", case["unit"], "-s", spacing, "-r", "cs",
            "-t", when.strftime("%H:%M:%S"), "-n", chan.network or "*", "-l", chan.location or "??"]
+    if "b62_x" in case:
+        cmd += ["-b62_x", repr(case["b62_x"])]
+    if case.get("ts"):
+        cmd.append("-ts")
+    if case.get("estdelay"):
+        cmd.append("-use-estimated-delay")
+    if case.get("il"):
+        cmd.append("-il")
+    if case.get("stages"):
+        first, last = case["stages"]
+        cmd += ["-stage", str(first)] + ([str(last)] if last is not None else [])
     out = Path(workdir) / f"SPECTRA.{chan.network}.{chan.station}.{chan.location}.{chan.channel}"
     if out.exists():
         out.unlink()
@@ -103,7 +146,13 @@ def run_py(channels, chan, when, case):
     chan = found[0]
     mn, mx, n, spacing = case["freqs"]
     freqs = sr.generate_frequencies(mn, mx, n, linear=spacing == "lin")
-    res = sr.evaluate(chan, freqs, unit="def")
+    stages = case.get("stages")
+    if stages and stages[1] is None:  # -stage N alone selects only stage N
+        stages = (stages[0], stages[0])
+    res = sr.evaluate(chan, freqs, unit=case["unit"], stages=stages,
+                      use_total_sensitivity=case.get("ts", False),
+                      use_estimated_delay=case.get("estdelay", False),
+                      b62_x=case.get("b62_x", 0.0), interpolate_list=case.get("il", False))
     return [(f, v.real, v.imag) for f, v in zip(res.frequencies, res.values)], ""
 
 
@@ -115,21 +164,27 @@ def close(a, b, rtol):
 def compare(rows_c, rows_p, rtol, floor=1e-9):
     """Compare complex spectra.
 
-    Error at each point is relative to that point's magnitude, but never
-    relative to less than ``floor`` times the peak magnitude: a value that is
-    1e-18 of the peak (e.g. a FIR response at Nyquist) is numerical noise and
-    legitimately differs between implementations.
+    Error at each point is relative to that point's magnitude.  A point where both
+    values are below ``floor`` times the peak magnitude (e.g. a FIR response at
+    Nyquist, or an evaluation point on a zero of a digital filter) is numerical
+    noise and legitimately differs between implementations.
     """
     if len(rows_c) != len(rows_p):
         return f"row count differs: C={len(rows_c)} py={len(rows_p)}"
-    peak = max(abs(complex(r, i)) for _, r, i in rows_c) or 1.0
+    peak = max((abs(complex(r, i)) for _, r, i in rows_c if math.isfinite(r) and math.isfinite(i)), default=0.0) or 1.0
     worst = 0.0
     for (fc, rc, ic), (fp, rp, ip) in zip(rows_c, rows_p):
         if not close(fc, fp, 1e-5):
             return f"frequency differs {fc} vs {fp}"
-        mag = max(abs(complex(rc, ic)), abs(complex(rp, ip)), floor * peak)
-        err = abs(complex(rc, ic) - complex(rp, ip))
-        worst = max(worst, err / mag)
+        ref, val = complex(rc, ic), complex(rp, ip)
+        if ref == val:  # includes equal infinities
+            continue
+        if not (cmath.isfinite(ref) and cmath.isfinite(val)):
+            return f"non-finite value differs at {fc}: {ref} vs {val}"
+        mag = max(abs(ref), abs(val))
+        if mag < floor * peak:
+            continue
+        worst = max(worst, abs(ref - val) / mag)
     return None if worst <= rtol else f"max relative error {worst:.3e} > {rtol}"
 
 
@@ -226,6 +281,8 @@ def _check_channel(source, index, work, binary, rtol, verbose):
     stats = dict(ok=0, bad=0, both_error=0, only_c_error=0, only_py_error=0)
     lines = []
     for case in CASES:
+        if not applies(case, chan, Path(file).name):
+            continue
         label = f"{Path(file).name} {chan.nslc} {when:%Y-%m-%d} {case}"
         rows_c, err_c = run_c(binary, source, index, chan, when, case, work)
         try:
