@@ -8,14 +8,14 @@ dynamic = ["version"]
 description = "Evaluate seismological instrument responses (StationXML, SEED RESP) with evalresp-compatible output"
 readme = "README.md"
 requires-python = ">=3.11"
-license = "Apache-2.0"
+license = "LGPL-3.0-only"
 license-files = ["LICENSE"]
 authors = [{ name = "EarthScope Consortium" }]
 keywords = ["seismology", "instrument response", "evalresp", "StationXML", "SEED", "RESP", "FDSN"]
 classifiers = [
     "Development Status :: 3 - Alpha",
     "Intended Audience :: Science/Research",
-    "License :: OSI Approved :: Apache Software License",
+    "License :: OSI Approved :: GNU Lesser General Public License v3 (LGPLv3)",
     "Programming Language :: Python :: 3",
     "Programming Language :: Python :: 3.11",
     "Programming Language :: Python :: 3.12",

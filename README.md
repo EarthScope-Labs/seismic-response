@@ -188,4 +188,4 @@ ruff check src tests tools
 reference results (the latter needs a built C evalresp). `tests/pyodide/` holds the WebAssembly smoke
 test run in CI; see `.github/workflows/tests.yml`.
 
-The package is Apache-2.0 (see `LICENSE`).
+The package is distributed under the GNU Lesser General Public License, version 3 (see `LICENSE`), the same license as evalresp.
