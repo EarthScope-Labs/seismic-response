@@ -165,19 +165,34 @@ def close(a, b, rtol):
     return abs(a - b) <= rtol * scale + 1e-300
 
 
-def compare(rows_c, rows_p, rtol, floor=1e-9, noise=1e-14):
+def _nyquist(chan, stages):
+    """Nyquist frequency of the channel's output over the selected stage range, or None
+    when no stage in it decimates.  ``stages`` is (first, last or None), as in CASES."""
+    first, last = stages or (None, None)
+    rates = [
+        st.decimation.input_sample_rate / st.decimation.factor
+        for st in chan.stages
+        if st.sequence != 0 and st.decimation is not None
+        and st.decimation.input_sample_rate > 0 and st.decimation.factor > 0
+        and (first is None or first <= st.sequence <= (first if last is None else last))
+    ]
+    return min(rates) / 2 if rates else None
+
+
+def compare(rows_c, rows_p, rtol, floor=1e-9, noise=1e-14, nyquist=None, rtol_above_nyquist=None):
     """Compare complex spectra.
 
     Error at each point is relative to that point's magnitude, after allowing an
     absolute difference of ``noise`` times the peak magnitude (cancellation near a
     stopband).  A point where both values are below ``floor`` times the peak (e.g. a
     FIR response above Nyquist, or an evaluation point on a zero of a digital filter)
-    is numerical noise and legitimately differs between implementations.
+    is numerical noise and legitimately differs between implementations.  A point above
+    ``nyquist`` is aliased and ill-conditioned, so it is held to ``rtol_above_nyquist``.
     """
     if len(rows_c) != len(rows_p):
         return f"row count differs: C={len(rows_c)} py={len(rows_p)}"
     peak = max((abs(complex(r, i)) for _, r, i in rows_c if math.isfinite(r) and math.isfinite(i)), default=0.0) or 1.0
-    worst = 0.0
+    worst = None
     for (fc, rc, ic), (fp, rp, ip) in zip(rows_c, rows_p):
         if not close(fc, fp, 1e-5):
             return f"frequency differs {fc} vs {fp}"
@@ -189,8 +204,11 @@ def compare(rows_c, rows_p, rtol, floor=1e-9, noise=1e-14):
         mag = max(abs(ref), abs(val))
         if mag < floor * peak:
             continue
-        worst = max(worst, max(abs(ref - val) - noise * peak, 0.0) / mag)
-    return None if worst <= rtol else f"max relative error {worst:.3e} > {rtol}"
+        err = max(abs(ref - val) - noise * peak, 0.0) / mag
+        tol = rtol_above_nyquist if nyquist is not None and rtol_above_nyquist is not None and fc > nyquist else rtol
+        if err > tol and (worst is None or err * worst[1] > worst[0] * tol):
+            worst = (err, tol, fc)
+    return None if worst is None else f"max relative error {worst[0]:.3e} > {worst[1]} at {worst[2]:g} Hz"
 
 
 _SOURCES = {}
@@ -271,13 +289,13 @@ def _epoch_time(chan):
 
 def check_file(task):
     """Compare all CASES for the channel epochs of a task; returns (stats, output lines)."""
-    binary, rtol, verbose = task[3:]
+    binary, rtol, rtol_above, verbose = task[3:]
     stats = dict(ok=0, bad=0, both_error=0, only_c_error=0, only_py_error=0, deliberate=0)
     return _check_epochs(task, stats, lambda source, index, work:
-                         _check_channel(source, index, work, binary, rtol, verbose))
+                         _check_channel(source, index, work, binary, rtol, rtol_above, verbose))
 
 
-def _check_channel(source, index, work, binary, rtol, verbose):
+def _check_channel(source, index, work, binary, rtol, rtol_above, verbose):
     """Compare all CASES for one channel epoch; returns (stats, output lines)."""
     file = source.path
     channels = source.channels
@@ -310,7 +328,8 @@ def _check_channel(source, index, work, binary, rtol, verbose):
             stats["only_py_error"] += 1
             lines.append(f"PY ERROR ONLY {label}\n   py: {err_p[:200]}")
         else:
-            msg = compare(rows_c, rows_p, rtol)
+            msg = compare(rows_c, rows_p, rtol, nyquist=_nyquist(chan, case.get("stages")),
+                          rtol_above_nyquist=rtol_above)
             if msg:
                 stats["bad"] += 1
                 lines.append(f"MISMATCH {label}\n   {msg}")
@@ -350,6 +369,8 @@ def main():
     ap.add_argument("binary")
     ap.add_argument("files", nargs="+", metavar="PATH", help="response file, or directory searched recursively")
     ap.add_argument("--rtol", type=float, default=2e-6)
+    ap.add_argument("--rtol-above-nyquist", type=float, default=1e-4,
+                    help="tolerance for frequencies above the channel's Nyquist frequency")
     ap.add_argument("-v", action="store_true")
     ap.add_argument("--formats", action="store_true", help="compare FAP/AP text output instead of complex spectra")
     ap.add_argument("-j", "--jobs", type=int, default=1, help="number of comparisons to run in parallel")
@@ -364,7 +385,7 @@ def main():
 
     stats = dict(ok=0, bad=0, both_error=0, only_c_error=0, only_py_error=0, deliberate=0)
     with tempfile.TemporaryDirectory() as root:
-        tasks = _file_tasks(files, args.jobs, root, (args.binary, args.rtol, args.v))
+        tasks = _file_tasks(files, args.jobs, root, (args.binary, args.rtol, args.rtol_above_nyquist, args.v))
         _run_tasks(check_file, tasks, args.jobs, stats)
     print(stats)
     return 1 if stats["bad"] or stats["only_py_error"] else 0

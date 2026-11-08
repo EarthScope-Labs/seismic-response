@@ -98,28 +98,6 @@ The page talks to the same Python through a small JSON API (`seismic_response.we
 server that is plain HTTP on the loopback interface (requests with a foreign `Host` or `Origin` are
 refused). On a static host it loads Pyodide from a CDN and runs the package in the browser.
 
-## How closely does it match evalresp?
-
-The numerical code is a port of evalresp's own logic (stage consistency checks, gain/normalization
-handling, FIR/IIR/pole-zero evaluation, unit conversion, phase unwrapping) rather than a re-derivation.
-It is checked against a built evalresp in two ways:
-
-* **Golden tests** (`tests/test_golden.py`, run everywhere): 369 results captured from the C program
-  (evalresp 5.1.0) for real and synthetic responses and a selection of evalresp's own test responses, over a
-  matrix of options (units, `-ts`, estimated delay, stage ranges, `-il`, `-b62_x`), matched to within the
-  7 digits it prints. Each point may also differ by up to 1e-14 of the response's peak (floating-point
-  cancellation near a stopband), and points where both values are below 1e-9 of the peak (such as a FIR
-  response above Nyquist) are numerical noise and are not compared.
-* **Live comparison** (`tools/compare_evalresp.py BINARY FILES...`, needs a built C evalresp, 5.1.0):
-  2,842 complex-spectrum comparisons over every response in evalresp's own test data and 381 over this
-  repository's fixtures, and 952 FAP/AP text comparisons on evalresp's test data (`--formats`, which
-  includes phase unwrapping), with no mismatches.
-
-Confirmed matching: Laplace (rad/s and Hz) and Z-transform poles/zeros, asymmetric/even/odd-symmetric
-FIR (including continuation blockettes and delay correction), IIR coefficients, response lists, gain-only
-stages, sensitivity-frequency renormalization, `dis`/`vel`/`acc`/`def` conversion including nm/mm/cm
-inputs, `-ts`, `-use-estimated-delay` and stage ranges.
-
 ### Deliberate differences from evalresp
 
 * **Default output unit.** With no unit requested, responses are evaluated in the units documented in the
@@ -134,7 +112,7 @@ inputs, `-ts`, `-use-estimated-delay` and stage ranges.
   optional. Any other input unit, or none, fails with an error. evalresp makes an exception for pressure
   (`PA`, `KPA`), tesla (`T`, `NT`), degrees C, counts and volts inputs, and for responses with no
   documented input units: it returns them unconverted, silently for `vel` (its default) and with a
-  warning for `dis` and `acc`. This package does not; use `def` for those responses.
+  warning for `dis` and `acc`. This package does not; use (the default) `def` for those responses.
 
 ## Limitations
 
@@ -153,6 +131,30 @@ inputs, `-ts`, `-use-estimated-delay` and stage ranges.
 * **RESP dictionary references** (blockette 60 and the blockette 4x lookups) are not supported and raise
   `ResponseParseError`.
 * Analog (non-Z) coefficient filters are rejected, as in evalresp.
+
+## How closely does it match evalresp?
+
+The numerical code is a port of evalresp's own logic (stage consistency checks, gain/normalization
+handling, FIR/IIR/pole-zero evaluation, unit conversion, phase unwrapping) rather than a re-derivation.
+It is checked against a built evalresp in two ways:
+
+* **Golden tests** (`tests/test_golden.py`, run everywhere): 369 results captured from the C program
+  (evalresp 5.1.0) for real and synthetic responses and a selection of evalresp's own test responses, over a
+  matrix of options (units, `-ts`, estimated delay, stage ranges, `-il`, `-b62_x`), matched to within the
+  7 digits it prints. Each point may also differ by up to 1e-14 of the response's peak (floating-point
+  cancellation near a stopband), and points where both values are below 1e-9 of the peak (such as a FIR
+  response above Nyquist) are numerical noise and are not compared.
+* **Live comparison** (`tools/compare_evalresp.py BINARY FILES...`, needs a built C evalresp, 5.1.0):
+  2,842 complex-spectrum comparisons over every response in evalresp's own test data and 381 over this
+  repository's fixtures, and 952 FAP/AP text comparisons on evalresp's test data (`--formats`, which
+  includes phase unwrapping), with no mismatches. Points above the Nyquist frequency of the evaluated
+  decimation stages, where FIRs alias and the response is ill-conditioned, are compared to 1e-4
+  (`--rtol-above-nyquist`) instead of 2e-6.
+
+Confirmed matching: Laplace (rad/s and Hz) and Z-transform poles/zeros, asymmetric/even/odd-symmetric
+FIR (including continuation blockettes and delay correction), IIR coefficients, response lists, gain-only
+stages, sensitivity-frequency renormalization, `dis`/`vel`/`acc`/`def` conversion including nm/mm/cm
+inputs, `-ts`, `-use-estimated-delay` and stage ranges.
 
 ## References
 
