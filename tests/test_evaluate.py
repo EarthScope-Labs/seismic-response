@@ -458,7 +458,7 @@ def _unit_channel(units: str):
 
 
 def test_double_s_acceleration_units_convert_like_double_star():
-    """evalresp would read ``M/S/S`` as velocity and skip the conversion; here it is acceleration."""
+    """``M/S/S`` is acceleration, like ``M/S**2``."""
     freqs = [0.1, 1.0, 5.0]
     ref = sr.evaluate(_unit_channel("M/S**2 - Acceleration"), freqs, unit="vel").values
     got = sr.evaluate(_unit_channel("M/S/S - Acceleration"), freqs, unit="vel").values

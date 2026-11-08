@@ -123,22 +123,18 @@ inputs, `-ts`, `-use-estimated-delay` and stage ranges.
 ### Deliberate differences from evalresp
 
 * **Default output unit.** With no unit requested, responses are evaluated in the units documented in the
-  response (`def`): counts per m/s for a velocity sensor, counts per m/s² for an accelerometer, and so on.
-  This applies to the library (`evaluate()`), `pyevalresp`, the web API and the GUI. evalresp defaults to
-  `vel` and converts every response to velocity unless `-u def` is given, which is an error for any response
-  that cannot be converted to velocity. For evalresp's behavior, pass  `-u vel` (or `unit="vel"`).
-* **Exact unit symbols.** When you request `-u dis|vel|acc`, the documented input unit of the first stage
-  decides whether and how the response is converted. evalresp matches only the *start* of the unit text,
-  so `M/S/S` (acceleration) is read as velocity because it begins with `M/S`, and any unit beginning with
-  `M` (`MBAR`, `MICROVOLTS`) is read as displacement; the conversion is then silently wrong by a factor of
-  2*pi*f. This package matches the whole unit symbol (the text before the first space, hyphen, comma or
-  parenthesis) against the known spellings: `M`, `M/S`, `M/SEC`, and the acceleration forms `M/S**2`,
-  `M/S^2`, `M/S2`, `M/S/S` and their `SEC` equivalents, each with an optional `N`, `M` or `C` prefix.
-  Anything else is not ground motion, and the request fails with an error instead of a wrong answer. This
-  includes pressure, tesla, degrees C or any other unit, and a response with no documented input units;
-  evalresp returns pressure, tesla and degrees C responses unconverted. The unit text may be a bare symbol
-  with no description. Results for `def` (the default) are not affected for any unit, and neither are
-  responses that use the standard spellings.
+  response (equivalent to `def` in evalresp): counts per m/s for a velocity sensor, counts per m/s² for
+  an accelerometer, counts per pascal for a pressure sensor, and so on. Any documented unit, or none, is
+  accepted. This applies to the library (`evaluate()`), `pyevalresp`, the web API and the GUI. evalresp
+  defaults to `vel`; pass `-u vel` (or `unit="vel"`) for that, subject to the next point.
+* **No unconverted responses for evaluation in `dis`, `vel` or `acc`.** These require the first stage
+  that documents input units to use a ground-motion unit: `M`, `M/S`, `M/SEC`, or an acceleration form (`M/S**2`,
+  `M/S^2`, `M/S2`, `M/S/S` and their `SEC` equivalents), each with an optional `N`, `M` or `C` prefix. The
+  unit symbol is the text before the first space, hyphen, comma or parenthesis, so a description is
+  optional. Any other input unit, or none, fails with an error. evalresp makes an exception for pressure
+  (`PA`, `KPA`), tesla (`T`, `NT`), degrees C, counts and volts inputs, and for responses with no
+  documented input units: it returns them unconverted, silently for `vel` (its default) and with a
+  warning for `dis` and `acc`. This package does not; use `def` for those responses.
 
 ## Limitations
 

@@ -23,7 +23,7 @@ from seismic_response import units as U
         ("T - Tesla", U.TESLA, 1.0),
         ("NT - nanotesla", U.TESLA, 1e9),
         ("C - Degrees Centigrade", U.CENTIGRADE, 1.0),
-        # spellings evalresp misclassifies by prefix matching
+        # alternate spellings and near misses
         ("M/S/S - Acceleration", U.ACC, 1.0),
         ("m/s/s", U.ACC, 1.0),
         ("M/S^2", U.ACC, 1.0),

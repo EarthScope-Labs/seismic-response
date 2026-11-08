@@ -5,14 +5,9 @@ whether the response is relative to displacement, velocity or acceleration and
 what scale factor converts a nm/mm/cm length unit to meters.  Those results
 drive the optional conversion to a requested output unit (``dis``/``vel``/``acc``).
 
-Deliberate difference from evalresp: motion units are matched *exactly*.
-evalresp's patterns are anchored only at the start of the text, so ``M/S/S`` (an
-acceleration) is taken for a velocity because it begins with ``M/S``, and any unit
-starting with ``M`` (``MBAR``, ``MICROVOLTS``) is taken for a displacement.  The
-requested conversion is then silently wrong by a factor of omega.  Here the unit
-*symbol* (the text before the first space, hyphen, comma or parenthesis) must be
-one of the known spellings; anything else is unclassified, which raises an error
-when a specific output unit is requested instead of returning a wrong answer.
+Motion units are matched exactly: the unit *symbol* (the text before the first
+space, hyphen, comma or parenthesis) must be one of the known spellings; anything
+else is unclassified.
 """
 
 from __future__ import annotations
@@ -70,9 +65,9 @@ def classify_units(text: Optional[str]) -> Tuple[int, float]:
     (2, 1.0)
     >>> classify_units("NM/S**2 - Nanometers per second squared")
     (3, 1000000000.0)
-    >>> classify_units("M/S/S - Acceleration")  # evalresp would call this velocity
+    >>> classify_units("M/S/S - Acceleration")
     (3, 1.0)
-    >>> classify_units("MBAR - millibar")  # evalresp would call this displacement
+    >>> classify_units("MBAR - millibar")
     (0, 1.0)
     """
     if not text:
