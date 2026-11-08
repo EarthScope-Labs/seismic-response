@@ -165,13 +165,14 @@ def close(a, b, rtol):
     return abs(a - b) <= rtol * scale + 1e-300
 
 
-def compare(rows_c, rows_p, rtol, floor=1e-9):
+def compare(rows_c, rows_p, rtol, floor=1e-9, noise=1e-14):
     """Compare complex spectra.
 
-    Error at each point is relative to that point's magnitude.  A point where both
-    values are below ``floor`` times the peak magnitude (e.g. a FIR response at
-    Nyquist, or an evaluation point on a zero of a digital filter) is numerical
-    noise and legitimately differs between implementations.
+    Error at each point is relative to that point's magnitude, after allowing an
+    absolute difference of ``noise`` times the peak magnitude (cancellation near a
+    stopband).  A point where both values are below ``floor`` times the peak (e.g. a
+    FIR response above Nyquist, or an evaluation point on a zero of a digital filter)
+    is numerical noise and legitimately differs between implementations.
     """
     if len(rows_c) != len(rows_p):
         return f"row count differs: C={len(rows_c)} py={len(rows_p)}"
@@ -188,7 +189,7 @@ def compare(rows_c, rows_p, rtol, floor=1e-9):
         mag = max(abs(ref), abs(val))
         if mag < floor * peak:
             continue
-        worst = max(worst, abs(ref - val) / mag)
+        worst = max(worst, max(abs(ref - val) - noise * peak, 0.0) / mag)
     return None if worst <= rtol else f"max relative error {worst:.3e} > {rtol}"
 
 

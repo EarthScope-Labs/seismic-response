@@ -948,9 +948,11 @@ def evaluate(
 
     first_units_class = U.DEFAULT
     if opts.unit != U.DEFAULT:
-        first_units_class = next((s.in_class for s in work.stages if s.in_class != U.UNDEF), U.UNDEF)
+        # Input units of the first stage that has any; the overall sensitivity (stage 0) is not used.
+        numbered = [s for s in work.stages if s.seq != 0]
+        first_units_class = next((s.in_class for s in numbered if s.in_class != U.UNDEF), U.UNDEF)
         if opts.unit in (U.DIS, U.ACC) and first_units_class not in (U.DIS, U.VEL, U.ACC):
-            units_text = next((s.in_units for s in work.stages if s.in_units), "")
+            units_text = next((s.in_units for s in numbered if s.in_units), "")
             _warn(
                 work,
                 f"{ident}: input units ('{units_text}') are not ground motion, "

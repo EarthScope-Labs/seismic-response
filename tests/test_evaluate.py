@@ -127,6 +127,15 @@ def test_units_come_from_the_first_stage_that_has_them():
     assert c.evaluate([0.5], unit="vel").values[0] == pytest.approx(ref * complex(0, -1 / w))
 
 
+@pytest.mark.parametrize("unit", ["vel", "dis", "acc"])
+def test_overall_sensitivity_units_do_not_select_the_conversion(unit):
+    c = chan(Stage(1, gain=Gain(2.0, 1.0)), Stage(2, gain=Gain(5.0, 1.0)),
+             Stage(0, "M/S - Velocity", COUNTS, gain=Gain(10.0, 1.0)))
+    res = c.evaluate([0.1, 1.0, 10.0], unit=unit)
+    assert res.values == [10.0 + 0j] * 3
+    assert any("not ground motion" in w for w in res.info.warnings) == (unit != "vel")
+
+
 def _pz_channel(zeros, poles, gain_freq=5.0):
     pz = PolesZeros("laplace_rad", zeros, poles, a0=1.0, a0_freq=5.0)
     return chan(Stage(1, VEL, VOLTS, pz, gain=Gain(1.0, gain_freq)))

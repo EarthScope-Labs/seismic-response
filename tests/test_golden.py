@@ -24,9 +24,10 @@ def _id(entry):
     return f"{Path(entry['fixture']).stem}:{entry['nslc']}@{entry['time'][:10]}:{'/'.join(opts)}"
 
 
-def _compare(rows_c, values, freqs, rtol=2e-6, floor=1e-9):
-    """Relative error per point.  A point where both values are below ``floor`` of the peak
-    (such as a FIR response at Nyquist) is numerical noise and is not compared."""
+def _compare(rows_c, values, freqs, rtol=2e-6, floor=1e-9, noise=1e-14):
+    """Relative error per point, after allowing an absolute difference of ``noise`` times the
+    peak (cancellation near a stopband).  A point where both values are below ``floor`` of the
+    peak (such as a FIR response above Nyquist) is numerical noise and is not compared."""
     assert len(rows_c) == len(values)
     finite = [abs(complex(r, i)) for _, r, i in rows_c if cmath.isfinite(complex(r, i))]
     peak = max(finite, default=0.0) or 1.0
@@ -40,7 +41,7 @@ def _compare(rows_c, values, freqs, rtol=2e-6, floor=1e-9):
         mag = max(abs(ref), abs(vp))
         if mag < floor * peak:
             continue  # numerical noise, e.g. an evaluation point on a zero of a digital filter
-        worst = max(worst, abs(ref - vp) / mag)
+        worst = max(worst, max(abs(ref - vp) - noise * peak, 0.0) / mag)
     assert worst <= rtol, f"max relative error {worst:.3e}"
 
 

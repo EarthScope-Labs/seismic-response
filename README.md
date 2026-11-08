@@ -107,8 +107,9 @@ It is checked against a built evalresp in two ways:
 * **Golden tests** (`tests/test_golden.py`, run everywhere): 369 results captured from the C program
   (evalresp 5.1.0) for real and synthetic responses and a selection of evalresp's own test responses, over a
   matrix of options (units, `-ts`, estimated delay, stage ranges, `-il`, `-b62_x`), matched to within the
-  7 digits it prints. Points where both values are below 1e-9 of the response's peak (such as a FIR
-  response at Nyquist) are numerical noise and are not compared.
+  7 digits it prints. Each point may also differ by up to 1e-14 of the response's peak (floating-point
+  cancellation near a stopband), and points where both values are below 1e-9 of the peak (such as a FIR
+  response above Nyquist) are numerical noise and are not compared.
 * **Live comparison** (`tools/compare_evalresp.py BINARY FILES...`, needs a built C evalresp, 5.1.0):
   2,842 complex-spectrum comparisons over every response in evalresp's own test data and 381 over this
   repository's fixtures, and 952 FAP/AP text comparisons on evalresp's test data (`--formats`, which
