@@ -112,9 +112,9 @@ class ResponseInfo:
 class ResponseResult:
     """A computed response.
 
-    ``frequencies`` may differ from those requested when the response is a
-    single response-list stage (blockette 55): evalresp then reports exactly the
-    listed frequencies.
+    ``frequencies`` may differ from those requested when a selected stage is a
+    response list (blockette 55): evalresp then reports exactly the listed
+    frequencies.
     """
 
     channel: Channel
@@ -350,11 +350,6 @@ def _prepare(channel: Channel, opts: _Options) -> _Work:
             kind = _IIR_PZ if f.kind == Z_TRANSFORM else _PZ
         elif isinstance(f, ResponseList):
             kind = _LIST
-            others = [s for s in stages_in if s is not st and s.sequence != 0 and s.filter is not None]
-            if others:
-                raise ResponseValueError(
-                    f"{ident}: blockette 55 (response list) cannot be mixed with other filter blockettes"
-                )
         elif isinstance(f, Generic):
             kind = _GENERIC
             _warn(work, f"{ident}: GENERIC blockette is detected in stage {st.sequence}; content is ignored")
@@ -804,17 +799,8 @@ def _cubic_spline(t: Sequence[float], y: Sequence[float], xs: Sequence[float]) -
     return out
 
 
-def _interpolate_list(
-    rl: ResponseList, requested: Sequence[float], work: _Work, ident: str
-) -> Tuple[List[float], ResponseList]:
-    """Resample a response list at the requested frequencies that lie within its range.
-
-    Amplitudes and unwrapped phases are splined separately against log10(frequency), the
-    amplitudes as log10(amplitude), and phases are returned wrapped.  If any listed
-    frequency or amplitude, or any requested frequency, is not positive, the splines run
-    in linear space instead and non-positive amplitudes are replaced by a tenth of the
-    smallest listed amplitude.
-    """
+def _list_range(rl: ResponseList, requested: Sequence[float], work: _Work, ident: str) -> List[float]:
+    """The requested frequencies that lie within a response list's range."""
     freqs = rl.frequencies
     n = len(freqs)
     if n < 2:
@@ -834,7 +820,23 @@ def _interpolate_list(
         _warn(work, f"{ident}: dropped {below} values from start of requested range, outside blockette 55")
     if above:
         _warn(work, f"{ident}: dropped {above} values from end of requested range, outside blockette 55")
+    return used
 
+
+def _same_frequencies(a: Sequence[float], b: Sequence[float]) -> bool:
+    return len(a) == len(b) and all(abs(x - y) <= 1e-6 * abs(y) for x, y in zip(a, b))
+
+
+def _interpolate_list(rl: ResponseList, used: Sequence[float], work: _Work, ident: str) -> ResponseList:
+    """Resample a response list at frequencies within its range.
+
+    Amplitudes and unwrapped phases are splined separately against log10(frequency), the
+    amplitudes as log10(amplitude), and phases are returned wrapped.  If any listed
+    frequency or amplitude, or any requested frequency, is not positive, the splines run
+    in linear space instead and non-positive amplitudes are replaced by a tenth of the
+    smallest listed amplitude.
+    """
+    freqs = rl.frequencies
     use_log = all(f > 0.0 for f in freqs) and all(a > 0.0 for a in rl.amplitudes) and all(f > 0.0 for f in used)
     if use_log:
         knots = [math.log10(f) for f in freqs]
@@ -879,7 +881,7 @@ def _interpolate_list(
                 ph += 360.0
             phases[i] = ph
 
-    return used, ResponseList(used, amps, phases)
+    return ResponseList(list(used), amps, phases)
 
 
 def evaluate(
@@ -902,8 +904,9 @@ def evaluate(
     channel:
         The channel (epoch) to evaluate.
     frequencies:
-        Frequencies in Hz.  If the response is a single response-list stage the
-        listed frequencies are used instead (as in evalresp).
+        Frequencies in Hz.  If a selected stage is a response list the listed
+        frequencies are used instead (as in evalresp); several lists must share
+        their frequencies, or be interpolated.
     unit:
         ``"def"`` (default) for the unit documented in the response, or ``"vel"``,
         ``"dis"``, ``"acc"`` (evalresp's own default is ``"vel"``).
@@ -926,8 +929,8 @@ def evaluate(
         Stage numbers to leave out of the calculation (in addition to any
         ``stages`` range).
     interpolate_list:
-        For a response-list (blockette 55) response, spline-interpolate the list at the
-        requested frequencies (those outside the list's range are dropped) instead of
+        Spline-interpolate each selected response-list (blockette 55) stage at the
+        requested frequencies (those outside any list's range are dropped) instead of
         reporting the listed frequencies.
     """
     opts = _Options(unit, stages, use_total_sensitivity, use_estimated_delay, b62_x, exclude_stages)
@@ -943,13 +946,21 @@ def evaluate(
         raise ResponseValueError(f"{ident}: no matching stages found for requested stage range")
 
     freqs = list(frequencies)
-    first = work.stages[0]
-    if first.kind == _LIST:
-        if interpolate_list:
-            freqs, listed = _interpolate_list(first.filter, freqs, work, ident)
-            selected = [replace(s, filter=listed) if s is first else s for s in selected]
-        else:
-            freqs = list(first.filter.frequencies)
+    lists = [s for s in selected if s.kind == _LIST]
+    if lists and interpolate_list:
+        for s in lists:
+            freqs = _list_range(s.filter, freqs, work, ident)
+        sampled = {s.seq: _interpolate_list(s.filter, freqs, work, ident) for s in lists}
+        selected = [replace(s, filter=sampled[s.seq]) if s.seq in sampled else s for s in selected]
+    elif lists:
+        first = lists[0]
+        for s in lists[1:]:
+            if not _same_frequencies(s.filter.frequencies, first.filter.frequencies):
+                raise ResponseValueError(
+                    f"{ident}: response list stages {first.seq} and {s.seq} have different frequencies, "
+                    "so they can only be combined by interpolating"
+                )
+        freqs = list(first.filter.frequencies)
     if not freqs:
         raise ResponseValueError("No frequencies requested")
 

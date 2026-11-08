@@ -4,6 +4,7 @@ import math
 from datetime import datetime, timezone
 
 import pytest
+from conftest import load_fixture
 
 import seismic_response as sr
 from seismic_response import (
@@ -439,6 +440,68 @@ def test_list_interpolation_rejects_unusable_input():
 def test_list_interpolation_leaves_other_responses_unchanged(anmo):
     f = [0.5, 2.0]
     assert anmo[0].evaluate(f, interpolate_list=True).values == anmo[0].evaluate(f).values
+
+
+@pytest.fixture(scope="module")
+def list_stages():
+    """Pole-zero stage 1 (gain 2) and list stages 2 (5 rows) and 3 (4 rows, other frequencies)."""
+    return load_fixture("evalresp/station-list-stage2.xml")[0]
+
+
+def _amps_phases(res):
+    return [abs(v) for v in res.values], sr.phase_degrees(res.values)
+
+
+def test_list_stage_after_other_stages_is_evaluated_at_its_listed_frequencies(list_stages):
+    res = list_stages.evaluate([1.0], unit="def", stages=(1, 2))
+    amps, phases = _amps_phases(res)
+    assert res.frequencies == [0.1, 0.5, 1.0, 2.0, 10.0]
+    assert amps == pytest.approx([2.0, 4.0, 8.0, 6.0, 1.0])
+    assert phases == pytest.approx([0.0, 10.0, 20.0, 30.0, 40.0], abs=1e-4)
+
+    res = list_stages.evaluate([1.0], unit="def", stages=(2, 2))
+    assert _amps_phases(res)[0] == pytest.approx([1.0, 2.0, 4.0, 3.0, 0.5])
+
+
+def test_list_stage_after_other_stages_is_interpolated_at_the_requested_frequencies(list_stages):
+    freqs = [0.1, 0.5, 1.0, 1.5, 2.0, 5.0, 10.0]
+    res = list_stages.evaluate(freqs, unit="def", stages=(1, 2), interpolate_list=True)
+    amps, phases = _amps_phases(res)
+    assert res.frequencies == freqs
+    for i, amp, phase in [(0, 2.0, 0.0), (1, 4.0, 10.0), (2, 8.0, 20.0), (4, 6.0, 30.0), (6, 1.0, 40.0)]:
+        assert amps[i] == pytest.approx(amp)
+        assert phases[i] == pytest.approx(phase, abs=1e-4)
+    assert all(math.isfinite(a) and a > 0 for a in amps)
+
+
+def test_list_stages_with_different_frequencies_combine_only_by_interpolation(list_stages):
+    freqs = [0.1, 0.2, 1.0, 5.0, 10.0, 20.0]
+    with pytest.raises(sr.ResponseValueError, match="stages 2 and 3 have different frequencies"):
+        list_stages.evaluate(freqs, unit="def", stages=(2, 3))
+    res = list_stages.evaluate(freqs, unit="def", stages=(2, 3), interpolate_list=True)
+    amps, phases = _amps_phases(res)
+    assert res.frequencies == [0.2, 1.0, 5.0, 10.0]  # the range common to both lists
+    assert amps[1] == pytest.approx(6.0)
+    assert phases[1] == pytest.approx(35.0, abs=1e-4)
+
+
+def test_list_stages_with_equal_frequencies_multiply():
+    rows = ([1.0, 2.0], [2.0, 3.0], [10.0, 20.0])
+    c = chan(
+        Stage(1, VEL, COUNTS, ResponseList(*rows), gain=Gain(1.0, 1.0)),
+        Stage(2, COUNTS, COUNTS, ResponseList([1.0, 2.0 * (1 + 1e-7)], [5.0, 7.0], [30.0, 40.0]), gain=Gain(1.0, 1.0)),
+    )
+    res = c.evaluate([9.0], unit="def")
+    assert res.frequencies == [1.0, 2.0]
+    assert [abs(v) for v in res.values] == pytest.approx([10.0, 21.0])
+    assert sr.phase_degrees(res.values) == pytest.approx([40.0, 60.0], abs=1e-4)
+
+
+def test_list_stage_outside_the_stage_range_does_not_limit_the_frequencies(list_stages):
+    for interpolate in (False, True):
+        res = list_stages.evaluate([0.01, 30.0], unit="def", stages=(1, 1), interpolate_list=interpolate)
+        assert res.frequencies == [0.01, 30.0]
+        assert _amps_phases(res)[0] == pytest.approx([2.0, 2.0])
 
 
 def test_default_unit_is_the_documented_unit(anmo):

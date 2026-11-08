@@ -54,6 +54,7 @@ CASES = [
     dict(unit="vel", freqs=LOG, stages=(2, 3)),
     dict(unit="vel", freqs=LOG, stages=(1, 1)),
     dict(unit="vel", freqs=(0.005, 20, 30, "log"), il=True),
+    dict(unit="def", freqs=(0.005, 20, 30, "log"), il=True),
     # 1e-10 (relative) outside the list's limits of 0.1 and 10 Hz, which evalresp treats as inside
     dict(unit="def", freqs=(0.09999999999, 10.000000001, 9, "log"), il=True, only=("station-list",)),
     dict(unit="def", freqs=LOG, b62_x=2.0),

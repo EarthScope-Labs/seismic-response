@@ -4,6 +4,9 @@ the files in ../real and ../synthetic do not: a gain-only first stage, a digital
 above Nyquist, gain-only channels, polynomial (blockette 62) responses, response lists in
 StationXML, StationXML precision, and analog poles/zeros at zero frequency and with excess poles.
 
+station-list-stage2.xml is from a later evalresp commit (90999e1): two response lists, in stages 2 and 3,
+after a pole-zero stage.
+
 ../real already holds other files copied from the same directory.
 
 tools/make_golden.py evaluates these with the C program to produce ../golden/golden.json.

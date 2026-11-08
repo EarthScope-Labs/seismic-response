@@ -124,7 +124,9 @@ refused). On a static host it loads Pyodide from a CDN and runs the package in t
   log10(amplitude) and the unwrapped phase. If any listed frequency or amplitude, or any requested
   frequency, is not positive it falls back to linear space with a warning. Requested frequencies outside
   the list's range are dropped with a warning, and the list frequencies must be strictly increasing.
-  `-ii` is accepted as an alias. This matches evalresp releases that include the spline fixes; evalresp
+  A response list may be in any stage. Without interpolation the output is at the listed frequencies, and
+  several lists must share them; with it, every evaluated list is interpolated and only the range common to
+  all of them is kept. `-ii` is accepted as an alias. This matches evalresp releases that include the spline fixes; evalresp
   5.0.1 and earlier give different values for requested frequencies that are not listed, because they
   swap two spline coefficients (the result is not smooth on unevenly spaced frequencies) and interpolate in
   linear space, where steep roll-offs can overshoot or go negative.
@@ -138,14 +140,14 @@ The numerical code is a port of evalresp's own logic (stage consistency checks, 
 handling, FIR/IIR/pole-zero evaluation, unit conversion, phase unwrapping) rather than a re-derivation.
 It is checked against a built evalresp in two ways:
 
-* **Golden tests** (`tests/test_golden.py`, run everywhere): 369 results captured from the C program
+* **Golden tests** (`tests/test_golden.py`, run everywhere): 377 results captured from the C program
   (evalresp 5.1.0) for real and synthetic responses and a selection of evalresp's own test responses, over a
   matrix of options (units, `-ts`, estimated delay, stage ranges, `-il`, `-b62_x`), matched to within the
   7 digits it prints. Each point may also differ by up to 1e-14 of the response's peak (floating-point
   cancellation near a stopband), and points where both values are below 1e-9 of the peak (such as a FIR
   response above Nyquist) are numerical noise and are not compared.
 * **Live comparison** (`tools/compare_evalresp.py BINARY FILES...`, needs a built C evalresp, 5.1.0):
-  2,842 complex-spectrum comparisons over every response in evalresp's own test data and 381 over this
+  2,850 complex-spectrum comparisons over every response in evalresp's own test data and 389 over this
   repository's fixtures, and 952 FAP/AP text comparisons on evalresp's test data (`--formats`, which
   includes phase unwrapping), with no mismatches. Points above the Nyquist frequency of the evaluated
   decimation stages, where FIRs alias and the response is ill-conditioned, are compared to 1e-4
