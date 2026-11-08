@@ -61,6 +61,20 @@ def test_response_list_may_be_followed_by_gain_only_stage():
     assert sr.evaluate(ch, [1.0]).values == [10 + 0j, 10 + 0j]
 
 
+def test_gain_only_stages_keep_sign_and_sample_interval():
+    ch = Channel("XX", "T", "", "BHZ", stages=[
+        Stage(1, None, None, gain=Gain(-5, 1.0)),
+        Stage(2, "M/S", "V", PolesZeros(LAPLACE_RADIANS, [], [-1 + 0j], 1.0, 1.0), gain=Gain(2, 1.0)),
+        Stage(3, "V", "COUNTS", FIR("A", [1.0]), Decimation(100, 2), Gain(1, 1.0)),
+        Stage(4, None, None, gain=Gain(3, 1.0)),
+    ])
+    r = sr.evaluate(ch, [1.0], unit="vel", per_stage=True)
+    assert r.stage_values[1] == [-5 + 0j]
+    assert r.stage_values[4] == [3 + 0j]
+    assert r.info.calculated_sensitivity == -30
+    assert r.info.sample_interval == pytest.approx(0.02)
+
+
 @pytest.mark.parametrize("bad", [float("nan"), float("inf")])
 def test_generate_frequencies_rejects_non_finite(bad):
     with pytest.raises(sr.ResponseValueError):

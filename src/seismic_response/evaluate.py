@@ -935,7 +935,7 @@ def evaluate(
     """
     opts = _Options(unit, stages, use_total_sensitivity, use_estimated_delay, b62_x, exclude_stages)
     ident = channel.nslc
-    # evalresp reports a zero amplitude (with a warning) here; an error is clearer than a flat curve
+    # A stage-0 sensitivity alone has no response to evaluate.
     if channel.stages and all(s.sequence == 0 and s.filter is None for s in channel.stages):
         raise ResponseValueError(f"{ident}: response has only an overall sensitivity and no filter stages")
     work = _prepare(channel, opts)
