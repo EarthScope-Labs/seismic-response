@@ -1,6 +1,6 @@
 # seismic-response
 
-
+[![DOI](https://zenodo.org/badge/1447850377.svg)](https://doi.org/10.5281/zenodo.24063126)
 
 Evaluate seismological instrument responses specified as **StationXML**, **SEED RESP** or **SAC poles-and-zeros**
 as selected frequencies to get complex-spectra or frequency-amplitude-phase results.  This package is a
