@@ -1,6 +1,6 @@
 # Pushing a tag `vX.Y.Z` checks it against the package version, CITATION.cff and CHANGELOG.md, runs the
 # tests, and creates a draft GitHub release with the CHANGELOG notes. A draft is not archived by Zenodo and
-# does not deploy the site; publishing it by hand does both.
+# does not deploy the site or upload to PyPI; publishing it by hand does all three.
 name: draft release
 
 on:
