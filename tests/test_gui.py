@@ -144,6 +144,18 @@ def http_call(port, method, path, body=None, headers=None):
     return resp.status, resp.getheader("Content-Type"), data
 
 
+def test_server_responses_cannot_be_framed_or_sniffed(live_server):
+    for method, path in [("GET", "/"), ("GET", "/missing.js"), ("POST", "/api/clear")]:
+        conn = http.client.HTTPConnection("127.0.0.1", live_server, timeout=10)
+        conn.request(method, path, body="[]" if method == "POST" else None)
+        resp = conn.getresponse()
+        resp.read()
+        conn.close()
+        assert resp.getheader("X-Frame-Options") == "DENY"
+        assert resp.getheader("Content-Security-Policy") == "frame-ancestors 'none'"
+        assert resp.getheader("X-Content-Type-Options") == "nosniff"
+
+
 def test_server_serves_the_page_and_assets(live_server):
     for path, ctype in [("/", "text/html"), ("/app.js", "text/javascript"), ("/style.css", "text/css")]:
         status, ct, body = http_call(live_server, "GET", path)

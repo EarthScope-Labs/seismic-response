@@ -10,6 +10,7 @@
 - Match Source ID patterns given without the FDSN: prefix, or with it in any case
 - Reject NaN and infinite frequencies in evaluate()
 - Give Channel.evaluate the typed signature of evaluate()
+- Forbid framing and content sniffing of GUI server responses
 
 ## v0.1.0
 
