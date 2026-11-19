@@ -9,6 +9,7 @@
 - Limit GUI API requests to 20000 frequencies, as the page does
 - Match Source ID patterns given without the FDSN: prefix, or with it in any case
 - Reject NaN and infinite frequencies in evaluate()
+- Give Channel.evaluate the typed signature of evaluate()
 
 ## v0.1.0
 

@@ -1,5 +1,6 @@
 """Evaluation: analytic checks, normalization, unit conversion, errors and options."""
 
+import inspect
 import math
 from datetime import datetime, timezone
 
@@ -541,3 +542,10 @@ def test_unrecognized_motion_like_units_fail_loudly_when_converting():
     with pytest.raises(sr.ResponseValueError, match="not ground motion"):
         sr.evaluate(ch, [1.0], unit="vel")
     assert len(sr.evaluate(ch, [1.0], unit="def").values) == 1  # default units never classify
+
+
+def test_channel_evaluate_has_the_signature_of_evaluate():
+    def params(func, skip):
+        return [(p.name, p.kind, p.default, p.annotation) for p in inspect.signature(func).parameters.values()][skip:]
+
+    assert params(sr.Channel.evaluate, 1) == params(sr.evaluate, 1)

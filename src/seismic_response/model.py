@@ -15,9 +15,12 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 from datetime import datetime
-from typing import List, Optional, Tuple, Union
+from typing import TYPE_CHECKING, Iterable, List, Optional, Sequence, Tuple, Union
 
 from .errors import ResponseValueError
+
+if TYPE_CHECKING:
+    from .evaluate import ResponseResult
 
 __all__ = [
     "PolesZeros",
@@ -214,11 +217,34 @@ class Channel:
             return False
         return True
 
-    def evaluate(self, *args, **kwargs):
+    def evaluate(
+        self,
+        frequencies: Sequence[float],
+        *,
+        unit: str = "def",
+        stages: Optional[Tuple[Optional[int], Optional[int]]] = None,
+        use_total_sensitivity: bool = False,
+        use_estimated_delay: bool = False,
+        b62_x: float = 0.0,
+        per_stage: bool = False,
+        interpolate_list: bool = False,
+        exclude_stages: Optional[Iterable[int]] = None,
+    ) -> ResponseResult:
         """Evaluate this channel's response; see :func:`seismic_response.evaluate`."""
         from .evaluate import evaluate
 
-        return evaluate(self, *args, **kwargs)
+        return evaluate(
+            self,
+            frequencies,
+            unit=unit,
+            stages=stages,
+            use_total_sensitivity=use_total_sensitivity,
+            use_estimated_delay=use_estimated_delay,
+            b62_x=b62_x,
+            per_stage=per_stage,
+            interpolate_list=interpolate_list,
+            exclude_stages=exclude_stages,
+        )
 
     def __str__(self) -> str:
         n = sum(1 for s in self.stages if s.sequence != 0)
