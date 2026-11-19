@@ -904,7 +904,7 @@ def evaluate(
     channel:
         The channel (epoch) to evaluate.
     frequencies:
-        Frequencies in Hz.  If a selected stage is a response list the listed
+        Frequencies in Hz (finite numbers).  If a selected stage is a response list the listed
         frequencies are used instead (as in evalresp); several lists must share
         their frequencies, or be interpolated.
     unit:
@@ -946,6 +946,8 @@ def evaluate(
         raise ResponseValueError(f"{ident}: no matching stages found for requested stage range")
 
     freqs = list(frequencies)
+    if not all(math.isfinite(f) for f in freqs):
+        raise ResponseValueError("Frequencies must be finite numbers")
     lists = [s for s in selected if s.kind == _LIST]
     if lists and interpolate_list:
         for s in lists:

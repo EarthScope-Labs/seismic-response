@@ -172,6 +172,13 @@ def test_normalizing_above_nyquist_warns():
     assert any("above its Nyquist frequency of 0.5 Hz" in w for w in res.info.warnings)
 
 
+@pytest.mark.parametrize("bad", [math.nan, math.inf, -math.inf])
+def test_non_finite_frequencies_are_an_error(bad):
+    c = _pz_channel([0j], [complex(-1.0, 1.0)])
+    with pytest.raises(sr.ResponseValueError, match="finite"):
+        c.evaluate([1.0, bad], unit="def")
+
+
 def test_response_list_replaces_the_requested_frequencies():
     lst = Stage(1, VEL, COUNTS, ResponseList([0.1, 1.0, 10.0], [2.0, 4.0, 8.0], [0.0, 90.0, -90.0]))
     c = chan(lst, Stage(0, gain=Gain(1.0, 1.0)))
