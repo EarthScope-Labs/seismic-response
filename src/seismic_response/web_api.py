@@ -22,6 +22,8 @@ from .timeutil import format_iso_time, parse_iso_time
 
 __all__ = ["load", "clear", "channels", "select", "evaluate_response", "export_text", "version", "call"]
 
+_MAX_POINTS = 20000  # most frequencies one request may evaluate (the page enforces the same limit)
+
 _store: List[Channel] = []
 _loads: List[int] = []  # load number of each _store entry
 _next_load = 0
@@ -137,10 +139,13 @@ def _compute(req: Any):
     fr = req.get("frequencies", {})
     if not isinstance(fr, dict):
         raise ResponseValueError("'frequencies' must be an object")
+    count = int(fr.get("count", 200))
+    if not 1 <= count <= _MAX_POINTS:
+        raise ResponseValueError(f"Number of frequencies must be between 1 and {_MAX_POINTS}")
     freqs = generate_frequencies(
         float(fr.get("min", 0.0001)),
         float(fr.get("max", 50.0)),
-        int(fr.get("count", 200)),
+        count,
         linear=fr.get("spacing", "log") == "lin",
     )
     stages = req.get("stages")

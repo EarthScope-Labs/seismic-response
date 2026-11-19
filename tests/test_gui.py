@@ -101,6 +101,8 @@ def test_errors_are_returned_not_raised():
         request(stages=[1, "x"]),
         request(exclude_stages="12"),
         request(exclude_stages=[{}]),
+        request(frequencies={"count": 0}),
+        request(frequencies={"count": 20001}),
     ],
 )
 def test_malformed_requests_are_returned_not_raised(req):
