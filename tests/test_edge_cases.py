@@ -1,4 +1,4 @@
-"""Regression tests for edge cases found in the package review."""
+"""Edge cases across evaluation, parsing, the web API and the command line."""
 
 import json
 

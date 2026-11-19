@@ -183,7 +183,7 @@ inputs, `-ts`, `-use-estimated-delay` and stage ranges.
 ```sh
 python -m venv .venv && . .venv/bin/activate
 pip install -e ".[dev]"
-pytest                      # ~550 tests, ~2 s
+pytest                      # ~600 tests, a few seconds
 ruff check src tests tools
 ruff format src tests tools
 ```
