@@ -120,3 +120,10 @@ def test_argument_errors_are_package_errors(call, error):
         call()
     assert isinstance(info.value, sr.SeismicResponseError)
     assert isinstance(info.value, ValueError)
+
+
+def test_selected_epochs_keep_input_order_across_interleaved_channels():
+    a_old, b_old = ch(d(2000), d(2005), sta="A"), ch(d(2000), d(2005), sta="B")
+    b_new, a_new = ch(d(2005), None, sta="B"), ch(d(2005), None, sta="A")
+    assert sr.select_channels([a_old, b_old, b_new, a_new]) == [b_new, a_new]
+    assert sr.select_channels([a_old, b_old, b_new, a_new], time=d(2001)) == [a_old, b_old]

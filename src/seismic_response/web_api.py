@@ -118,7 +118,8 @@ def select(source_id: str = "*", time: Optional[str] = None, load: Optional[int]
     pattern = source_id or "*"
     pool = [c for c, n in zip(_store, _loads) if wanted is None or n == wanted]
     found = select_channels(pool, pattern, time=t)
-    ids = [i for i, c in enumerate(_store) if any(c is f for f in found)]
+    found_ids = {id(c) for c in found}
+    ids = [i for i, c in enumerate(_store) if id(c) in found_ids]
     return json.dumps(ids)
 
 

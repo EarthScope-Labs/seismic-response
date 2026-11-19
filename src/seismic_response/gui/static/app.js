@@ -244,33 +244,45 @@ async function refreshChannels() {
 
 function groupKey(c) { return `${c.load}|${c.source_id}`; }
 
-/** One group per (load, Source ID); a Source ID present in several loads is numbered #1, #2, ... */
-function sourceGroups() {
+/** Groups, epochs and channels by id for the current S.channels, rebuilt only when that array is replaced. */
+let channelIndex = null;
+function indexChannels() {
+  if (channelIndex && channelIndex.channels === S.channels) return channelIndex;
   const byKey = new Map();
+  const epochs = new Map();
+  const byId = new Map();
   for (const c of S.channels) {
     const key = groupKey(c);
-    if (!byKey.has(key)) byKey.set(key, { key, sid: c.source_id, load: c.load, origin: c.origin, label: c.source_id });
+    if (!byKey.has(key)) {
+      byKey.set(key, { key, sid: c.source_id, load: c.load, origin: c.origin, label: c.source_id });
+      epochs.set(key, []);
+    }
+    epochs.get(key).push(c);
+    byId.set(c.id, c);
   }
+  for (const eps of epochs.values()) eps.sort((a, b) => (a.start || '').localeCompare(b.start || ''));
   const groups = [...byKey.values()].sort((a, b) => (a.sid < b.sid ? -1 : a.sid > b.sid ? 1 : a.load - b.load));
   const total = new Map();
   for (const g of groups) total.set(g.sid, (total.get(g.sid) || 0) + 1);
-  const index = new Map();
+  const number = new Map();
   for (const g of groups) {
     if (total.get(g.sid) < 2) continue;
-    index.set(g.sid, (index.get(g.sid) || 0) + 1);
-    g.label = `${g.sid} #${index.get(g.sid)}`;
+    number.set(g.sid, (number.get(g.sid) || 0) + 1);
+    g.label = `${g.sid} #${number.get(g.sid)}`;
   }
-  return groups;
+  channelIndex = { channels: S.channels, groups, byKey, epochs, byId };
+  return channelIndex;
 }
 
-function groupOf(key) { return sourceGroups().find((g) => g.key === key) || null; }
+/** One group per (load, Source ID); a Source ID present in several loads is numbered #1, #2, ... */
+function sourceGroups() { return indexChannels().groups; }
 
-function chanOf(id) { return S.channels.find((c) => c.id === id) || null; }
+function groupOf(key) { return indexChannels().byKey.get(key) || null; }
 
-function epochsOf(g) {
-  return S.channels.filter((c) => c.source_id === g.sid && c.load === g.load)
-    .sort((a, b) => (a.start || '').localeCompare(b.start || ''));
-}
+function chanOf(id) { return indexChannels().byId.get(id) || null; }
+
+/** A group's epochs ordered by start time (shared; do not modify). */
+function epochsOf(g) { return indexChannels().epochs.get(g.key) || []; }
 
 function visibleGroups() {
   const filter = $('sidFilter').value.trim();
@@ -817,7 +829,7 @@ function drawBode() {
         line(gA, { x1: M.l, x2: M.l + PLOT_W, y1: y, y2: y });
         label(gA, M.l + 8, y + 15, `sens gain: ${fmtNum(sens, 6)}`, 'start', 1, r.color);
       }
-      const nyquist = channelNyquist(S.channels.find((c) => c.id === r.chanId));
+      const nyquist = channelNyquist(chanOf(r.chanId));
       const vlines = [
         [info.sensitivity_frequency, `sens freq ${fmtNum(info.sensitivity_frequency)} Hz`],
         [nyquist, nyquist ? `nyquist: ${fmtNum(nyquist)} Hz` : null],

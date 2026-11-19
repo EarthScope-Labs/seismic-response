@@ -11,6 +11,7 @@
 - Reject NaN and infinite frequencies in evaluate()
 - Give Channel.evaluate the typed signature of evaluate()
 - Forbid framing and content sniffing of GUI server responses
+- Speed up channel selection and the GUI channel list for large inventories
 
 ## v0.1.0
 

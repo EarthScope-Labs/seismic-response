@@ -13,7 +13,7 @@ import fnmatch
 import itertools
 import logging
 from datetime import datetime
-from typing import Iterable, List, Optional, Sequence, Tuple, Union
+from typing import Dict, Iterable, List, Optional, Sequence, Tuple, Union
 
 from .errors import AmbiguousChannelError, ChannelNotFoundError
 from .model import Channel
@@ -87,10 +87,6 @@ def _start(c: Channel) -> float:
     return c.start_time.timestamp() if c.start_time else -_FOREVER
 
 
-def _same_channel(a: Channel, b: Channel) -> bool:
-    return (a.network, a.station, a.location, a.channel) == (b.network, b.station, b.location, b.channel)
-
-
 def select_channels(
     channels: Sequence[Channel],
     source_id: Optional[str] = None,
@@ -133,32 +129,40 @@ def _source_id_matches(c: Channel, pattern: str) -> bool:
 def _select(
     channels: Sequence[Channel], sncls: Sequence[_Sncl], source_id: Optional[str], time: Optional[datetime]
 ) -> List[Channel]:
-    pool: List[Optional[Channel]] = [c for c in channels if source_id is None or _source_id_matches(c, source_id)]
-    result: List[Channel] = []
+    matched = [c for c in channels if source_id is None or _source_id_matches(c, source_id)]
+    pool: List[Optional[Channel]] = list(matched)
+    # Only epochs of the same channel compete, so each channel's epochs are compared among themselves.
+    same: Dict[Tuple[str, str, str, str], List[int]] = {}
+    for i, c in enumerate(matched):
+        same.setdefault((c.network, c.station, c.location, c.channel), []).append(i)
+    chosen: List[Tuple[int, Channel]] = []
     warn = False
-    for i, cand in enumerate(pool):
-        if cand is None or not _matches(cand, sncls, time):
-            continue
-        best = True
-        for j in range(i + 1, len(pool)):
-            if not best:
-                break
-            other = pool[j]
-            if other is None or not _same_channel(cand, other):
+    for indices in same.values():
+        for n, i in enumerate(indices):
+            cand = pool[i]
+            if cand is None or not _matches(cand, sncls, time):
                 continue
-            if time is None:
-                if _earlier(cand, other):
-                    best = False
-            else:
-                if other.contains(time) and _duration(cand) >= _duration(other):
-                    warn = True
-                    best = False
+            best = True
+            for j in indices[n + 1 :]:
+                if not best:
+                    break
+                other = pool[j]
+                if other is None:
+                    continue
+                if time is None:
+                    if _earlier(cand, other):
+                        best = False
+                else:
+                    if other.contains(time) and _duration(cand) >= _duration(other):
+                        warn = True
+                        best = False
+                if best:
+                    pool[j] = None
             if best:
-                pool[j] = None
-        if best:
-            result.append(cand)
-        else:
-            pool[i] = None
+                chosen.append((i, cand))
+            else:
+                pool[i] = None
+    result = [c for _, c in sorted(chosen, key=lambda x: x[0])]
     if warn:
         log.warning("Two or more entries match the same SNCL and date; the shortest was used")
     return result
