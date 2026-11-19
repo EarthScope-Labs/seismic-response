@@ -13,7 +13,7 @@ import math
 from typing import Any, Dict, List, Optional
 
 from . import __version__, parse_response
-from .errors import ChannelNotFoundError, SeismicResponseError
+from .errors import ChannelNotFoundError, ResponseValueError, SeismicResponseError
 from .evaluate import evaluate, generate_frequencies
 from .model import Channel
 from .output import render
@@ -122,14 +122,21 @@ def select(source_id: str = "*", time: Optional[str] = None, load: Optional[int]
 
 def _request_channel(req: Dict[str, Any]) -> Channel:
     try:
-        return _store[int(req["channel"])]
-    except (KeyError, ValueError, IndexError):
-        raise ChannelNotFoundError("No such channel loaded") from None
+        index = int(req["channel"])
+    except (KeyError, ValueError, TypeError):
+        index = -1
+    if not 0 <= index < len(_store):
+        raise ChannelNotFoundError("No such channel loaded")
+    return _store[index]
 
 
-def _compute(req: Dict[str, Any]):
+def _compute(req: Any):
+    if not isinstance(req, dict):
+        raise ResponseValueError("request must be a JSON object")
     chan = _request_channel(req)
     fr = req.get("frequencies", {})
+    if not isinstance(fr, dict):
+        raise ResponseValueError("'frequencies' must be an object")
     freqs = generate_frequencies(
         float(fr.get("min", 0.0001)),
         float(fr.get("max", 50.0)),
@@ -138,7 +145,12 @@ def _compute(req: Dict[str, Any]):
     )
     stages = req.get("stages")
     if stages is not None:
-        stages = (stages[0], stages[1])
+        if not isinstance(stages, list) or len(stages) != 2:
+            raise ResponseValueError("'stages' must be [first, last]")
+        stages = tuple(None if x is None else int(x) for x in stages)
+    exclude = req.get("exclude_stages") or []
+    if not isinstance(exclude, list):
+        raise ResponseValueError("'exclude_stages' must be a list of stage numbers")
     return evaluate(
         chan,
         freqs,
@@ -148,7 +160,7 @@ def _compute(req: Dict[str, Any]):
         use_estimated_delay=bool(req.get("estimated_delay", False)),
         b62_x=float(req.get("b62_x", 0.0)),
         per_stage=bool(req.get("per_stage", False)),
-        exclude_stages=[int(x) for x in req.get("exclude_stages") or []] or None,
+        exclude_stages=[int(x) for x in exclude] or None,
     )
 
 

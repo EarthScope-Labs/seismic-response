@@ -88,6 +88,26 @@ def test_errors_are_returned_not_raised():
     assert json.loads(web_api.call("nonsense"))["ok"] is False
 
 
+@pytest.mark.parametrize(
+    "req",
+    [
+        "[1]",
+        request(channel=-1),
+        request(channel=None),
+        request(frequencies=5),
+        request(stages=[1]),
+        request(stages="12"),
+        request(stages=[1, "x"]),
+        request(exclude_stages="12"),
+        request(exclude_stages=[{}]),
+    ],
+)
+def test_malformed_requests_are_returned_not_raised(req):
+    web_api.load("x", ANMO)
+    for reply in (web_api.call("evaluate", req), web_api.call("export", req, "fap")):
+        assert json.loads(reply)["ok"] is False
+
+
 def test_export_text_formats():
     web_api.load("x", ANMO)
     fap = json.loads(web_api.export_text(request(), "fap"))
