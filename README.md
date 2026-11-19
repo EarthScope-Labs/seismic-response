@@ -185,6 +185,7 @@ python -m venv .venv && . .venv/bin/activate
 pip install -e ".[dev]"
 pytest                      # ~550 tests, ~2 s
 ruff check src tests tools
+ruff format src tests tools
 ```
 
 `tools/make_synthetic.py` and `tools/make_golden.py` regenerate the synthetic fixtures and the golden

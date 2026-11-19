@@ -49,7 +49,10 @@ def test_default_output_is_amplitude_and_phase_files(run):
 
 def test_fap_and_complex_formats(run):
     assert run(*BASE, "-f", ANMO, "-r", "fap")[0] == 0
-    assert rows(run.dir / "FAP.IU.ANMO.00.BHZ")[2][1:] == (pytest.approx(24021.24, rel=1e-6), pytest.approx(-179.9037, rel=1e-6))
+    assert rows(run.dir / "FAP.IU.ANMO.00.BHZ")[2][1:] == (
+        pytest.approx(24021.24, rel=1e-6),
+        pytest.approx(-179.9037, rel=1e-6),
+    )
     assert run(*BASE, "-f", ANMO, "-r", "cs")[0] == 0
     cs = rows(run.dir / "SPECTRA.IU.ANMO.00.BHZ")
     assert cs[0][1:] == (pytest.approx(386557400.0, rel=1e-6), pytest.approx(523085700.0, rel=1e-6))
@@ -120,7 +123,19 @@ def test_stationxml_input_with_x_flag_and_autodetect(run):
 
     c = sr.read_response(xml)[0]
     when = c.start_time
-    args = [c.station, c.channel, str(when.year), str(when.timetuple().tm_yday + 5), "1", "1", "1", "-f", xml, "-r", "fap"]
+    args = [
+        c.station,
+        c.channel,
+        str(when.year),
+        str(when.timetuple().tm_yday + 5),
+        "1",
+        "1",
+        "1",
+        "-f",
+        xml,
+        "-r",
+        "fap",
+    ]
     assert run(*args)[0] == 0
     assert run(*args, "-x")[0] == 0
     assert list(run.dir.glob("FAP.*"))

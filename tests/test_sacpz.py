@@ -89,7 +89,9 @@ def test_codes_from_the_rdseed_file_name():
 
 def test_several_epochs_in_one_file():
     text = PFO.read_text()
-    second = text.replace("2010-07-30T18:50:00", "2005-01-01T00:00:00").replace("2599-12-31T23:59:59", "2010-07-30T18:50:00")
+    second = text.replace("2010-07-30T18:50:00", "2005-01-01T00:00:00").replace(
+        "2599-12-31T23:59:59", "2010-07-30T18:50:00"
+    )
     chans = parse_sacpz(second + text)
     assert len(chans) == 2
     early = sr.select_channel(chans, "FDSN:II_PFO_00_B_H_Z", time=datetime(2007, 1, 1, tzinfo=UTC))

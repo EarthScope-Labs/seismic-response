@@ -26,10 +26,16 @@ def _xml(prefix="", number="0"):
 
 
 def test_fir_summing_to_zero_is_a_package_error():
-    ch = Channel("XX", "T", "", "BHZ", stages=[
-        Stage(1, "M/S", "V", _PZ(), gain=Gain(100, 1.0)),
-        Stage(2, "V", "COUNTS", FIR("A", [0.5, -0.5]), Decimation(100, 1), Gain(1, 1.0)),
-    ])
+    ch = Channel(
+        "XX",
+        "T",
+        "",
+        "BHZ",
+        stages=[
+            Stage(1, "M/S", "V", _PZ(), gain=Gain(100, 1.0)),
+            Stage(2, "V", "COUNTS", FIR("A", [0.5, -0.5]), Decimation(100, 1), Gain(1, 1.0)),
+        ],
+    )
     with pytest.raises(sr.ResponseValueError, match="sum to zero"):
         sr.evaluate(ch, [1.0])
 
@@ -41,11 +47,17 @@ def test_sensitivity_only_channel_is_rejected():
 
 
 def test_per_stage_product_matches_total_with_total_sensitivity():
-    ch = Channel("XX", "T", "", "BHZ", stages=[
-        Stage(1, "M/S", "V", _PZ(), gain=Gain(100, 1.0)),
-        Stage(2, "V", "COUNTS", gain=Gain(10, 1.0)),
-        Stage(0, "M/S", "COUNTS", gain=Gain(2000, 1.0)),
-    ])
+    ch = Channel(
+        "XX",
+        "T",
+        "",
+        "BHZ",
+        stages=[
+            Stage(1, "M/S", "V", _PZ(), gain=Gain(100, 1.0)),
+            Stage(2, "V", "COUNTS", gain=Gain(10, 1.0)),
+            Stage(0, "M/S", "COUNTS", gain=Gain(2000, 1.0)),
+        ],
+    )
     r = sr.evaluate(ch, [1.0], use_total_sensitivity=True, per_stage=True)
     prod = 1
     for v in r.stage_values.values():
@@ -54,20 +66,32 @@ def test_per_stage_product_matches_total_with_total_sensitivity():
 
 
 def test_response_list_may_be_followed_by_gain_only_stage():
-    ch = Channel("XX", "T", "", "BHZ", stages=[
-        Stage(1, "M/S", "V", ResponseList([1.0, 2.0], [1.0, 1.0], [0, 0]), gain=Gain(1, 1.0)),
-        Stage(2, "V", "COUNTS", gain=Gain(10, 1.0)),
-    ])
+    ch = Channel(
+        "XX",
+        "T",
+        "",
+        "BHZ",
+        stages=[
+            Stage(1, "M/S", "V", ResponseList([1.0, 2.0], [1.0, 1.0], [0, 0]), gain=Gain(1, 1.0)),
+            Stage(2, "V", "COUNTS", gain=Gain(10, 1.0)),
+        ],
+    )
     assert sr.evaluate(ch, [1.0]).values == [10 + 0j, 10 + 0j]
 
 
 def test_gain_only_stages_keep_sign_and_sample_interval():
-    ch = Channel("XX", "T", "", "BHZ", stages=[
-        Stage(1, None, None, gain=Gain(-5, 1.0)),
-        Stage(2, "M/S", "V", PolesZeros(LAPLACE_RADIANS, [], [-1 + 0j], 1.0, 1.0), gain=Gain(2, 1.0)),
-        Stage(3, "V", "COUNTS", FIR("A", [1.0]), Decimation(100, 2), Gain(1, 1.0)),
-        Stage(4, None, None, gain=Gain(3, 1.0)),
-    ])
+    ch = Channel(
+        "XX",
+        "T",
+        "",
+        "BHZ",
+        stages=[
+            Stage(1, None, None, gain=Gain(-5, 1.0)),
+            Stage(2, "M/S", "V", PolesZeros(LAPLACE_RADIANS, [], [-1 + 0j], 1.0, 1.0), gain=Gain(2, 1.0)),
+            Stage(3, "V", "COUNTS", FIR("A", [1.0]), Decimation(100, 2), Gain(1, 1.0)),
+            Stage(4, None, None, gain=Gain(3, 1.0)),
+        ],
+    )
     r = sr.evaluate(ch, [1.0], unit="vel", per_stage=True)
     assert r.stage_values[1] == [-5 + 0j]
     assert r.stage_values[4] == [3 + 0j]

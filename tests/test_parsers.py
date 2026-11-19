@@ -137,7 +137,13 @@ def test_resp_response_list_rows_with_and_without_index():
 @pytest.mark.parametrize(
     "mutate, message",
     [
-        (lambda t: t.replace("B053F14     Number of poles:                       1\n", "B053F14     Number of poles:                       3\n"), "declared"),
+        (
+            lambda t: t.replace(
+                "B053F14     Number of poles:                       1\n",
+                "B053F14     Number of poles:                       3\n",
+            ),
+            "declared",
+        ),
         (lambda t: t.replace("A [Laplace", "Q [Laplace"), "unsupported"),
         (lambda t: t + "B060F01     Number of stages:    1\n", "blockette 60"),
         (lambda t: t.replace("B053F07     A0 normalization factor:               1.0\n", ""), "field 07 missing"),

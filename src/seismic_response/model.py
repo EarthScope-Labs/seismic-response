@@ -159,9 +159,7 @@ class Stage:
                 Z_TRANSFORM: "poles-zeros (Z-transform)",
             }[f.kind]
         if isinstance(f, FIR):
-            return {"A": "FIR (asymmetric)", "B": "FIR (symmetric, odd)", "C": "FIR (symmetric, even)"}[
-                f.symmetry
-            ]
+            return {"A": "FIR (asymmetric)", "B": "FIR (symmetric, odd)", "C": "FIR (symmetric, even)"}[f.symmetry]
         if isinstance(f, IIRCoefficients):
             return "IIR coefficients"
         if isinstance(f, ResponseList):
@@ -248,10 +246,7 @@ class Channel:
 
     def __str__(self) -> str:
         n = sum(1 for s in self.stages if s.sequence != 0)
-        return (
-            f"{self.source_id} {_fmt_time(self.start_time)} - {_fmt_time(self.end_time, 'open')} "
-            f"({n} stages)"
-        )
+        return f"{self.source_id} {_fmt_time(self.start_time)} - {_fmt_time(self.end_time, 'open')} ({n} stages)"
 
 
 def _fmt_time(t: Optional[datetime], none: str = "?") -> str:

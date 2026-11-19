@@ -663,9 +663,7 @@ def _normalize(work: _Work, opts: _Options, ident: str) -> None:
 
         main_is_pz = st.kind in (_PZ, _IIR_PZ)
         gain = st.gain
-        differs = gain.frequency != work.sensfreq or (
-            main_is_pz and st.filter.a0_freq != work.sensfreq
-        )
+        differs = gain.frequency != work.sensfreq or (main_is_pz and st.filter.a0_freq != work.sensfreq)
         if differs:
             reset = True
             flt = st.filter

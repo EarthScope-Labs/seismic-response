@@ -30,9 +30,7 @@ def format_fap(result: ResponseResult, unwrap: bool = True) -> str:
     """Frequency, amplitude, phase lines (``%.6E %.6E %.6E``)."""
     amps = result.amplitudes
     phases = result.phases(unwrap=unwrap)
-    return "".join(
-        f"{f:.6E} {a:.6E} {p:.6E}\n" for f, a, p in zip(result.frequencies, amps, phases)
-    )
+    return "".join(f"{f:.6E} {a:.6E} {p:.6E}\n" for f, a, p in zip(result.frequencies, amps, phases))
 
 
 def format_amplitude(result: ResponseResult) -> str:
@@ -40,16 +38,12 @@ def format_amplitude(result: ResponseResult) -> str:
 
 
 def format_phase(result: ResponseResult, unwrap: bool = False) -> str:
-    return "".join(
-        f"{f:.6E} {p:.6E}\n" for f, p in zip(result.frequencies, result.phases(unwrap=unwrap))
-    )
+    return "".join(f"{f:.6E} {p:.6E}\n" for f, p in zip(result.frequencies, result.phases(unwrap=unwrap)))
 
 
 def format_complex(result: ResponseResult) -> str:
     """Complex spectra: frequency, real, imaginary (two space separators, as evalresp)."""
-    return "".join(
-        f"{f:.6E}  {v.real:.6E}  {v.imag:.6E}\n" for f, v in zip(result.frequencies, result.values)
-    )
+    return "".join(f"{f:.6E}  {v.real:.6E}  {v.imag:.6E}\n" for f, v in zip(result.frequencies, result.values))
 
 
 _PREFIX = {"fap": "FAP", "amp": "AMP", "phase": "PHASE", "cs": "SPECTRA"}
@@ -65,9 +59,7 @@ def output_filename(result: ResponseResult, kind: str, stdio: bool = False) -> s
     return f"{prefix}.{c.network}.{c.station}.{c.location}.{c.channel}"
 
 
-def render(
-    result: ResponseResult, fmt: str = "ap", unwrap: bool = False, stdio: bool = False
-) -> List[Tuple[str, str]]:
+def render(result: ResponseResult, fmt: str = "ap", unwrap: bool = False, stdio: bool = False) -> List[Tuple[str, str]]:
     """Render a response in an evalresp output format.
 
     Returns ``[(filename, text), ...]``: one entry for ``fap`` and ``cs``, two

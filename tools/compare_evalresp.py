@@ -77,9 +77,30 @@ def applies(case, chan, name):
 def _run_c_once(binary, file, chan, when, case, workdir):
     year, jday = when.year, when.timetuple().tm_yday
     mn, mx, n, spacing = case["freqs"]
-    cmd = [binary, chan.station, chan.channel, str(year), str(jday), repr(mn), repr(mx), str(n),
-           "-f", str(file), "-u", case["unit"], "-s", spacing, "-r", "cs",
-           "-t", when.strftime("%H:%M:%S"), "-n", chan.network or "*", "-l", chan.location or "??"]
+    cmd = [
+        binary,
+        chan.station,
+        chan.channel,
+        str(year),
+        str(jday),
+        repr(mn),
+        repr(mx),
+        str(n),
+        "-f",
+        str(file),
+        "-u",
+        case["unit"],
+        "-s",
+        spacing,
+        "-r",
+        "cs",
+        "-t",
+        when.strftime("%H:%M:%S"),
+        "-n",
+        chan.network or "*",
+        "-l",
+        chan.location or "??",
+    ]
     if "b62_x" in case:
         cmd += ["-b62_x", repr(case["b62_x"])]
     if case.get("ts"):
@@ -144,8 +165,14 @@ class Source:
 
 def run_py(channels, chan, when, case):
     # Select by identifier and time exactly as C does (shortest overlapping epoch wins)
-    found = sr.select_channels(channels, network=[chan.network], station=[chan.station],
-                               location=[chan.location], channel=[chan.channel], time=when)
+    found = sr.select_channels(
+        channels,
+        network=[chan.network],
+        station=[chan.station],
+        location=[chan.location],
+        channel=[chan.channel],
+        time=when,
+    )
     if not found:
         raise sr.ChannelNotFoundError("no channel selected")
     chan = found[0]
@@ -154,10 +181,16 @@ def run_py(channels, chan, when, case):
     stages = case.get("stages")
     if stages and stages[1] is None:  # -stage N alone selects only stage N
         stages = (stages[0], stages[0])
-    res = sr.evaluate(chan, freqs, unit=case["unit"], stages=stages,
-                      use_total_sensitivity=case.get("ts", False),
-                      use_estimated_delay=case.get("estdelay", False),
-                      b62_x=case.get("b62_x", 0.0), interpolate_list=case.get("il", False))
+    res = sr.evaluate(
+        chan,
+        freqs,
+        unit=case["unit"],
+        stages=stages,
+        use_total_sensitivity=case.get("ts", False),
+        use_estimated_delay=case.get("estdelay", False),
+        b62_x=case.get("b62_x", 0.0),
+        interpolate_list=case.get("il", False),
+    )
     return [(f, v.real, v.imag) for f, v in zip(res.frequencies, res.values)], ""
 
 
@@ -173,8 +206,10 @@ def _nyquist(chan, stages):
     rates = [
         st.decimation.input_sample_rate / st.decimation.factor
         for st in chan.stages
-        if st.sequence != 0 and st.decimation is not None
-        and st.decimation.input_sample_rate > 0 and st.decimation.factor > 0
+        if st.sequence != 0
+        and st.decimation is not None
+        and st.decimation.input_sample_rate > 0
+        and st.decimation.factor > 0
         and (first is None or first <= st.sequence <= (first if last is None else last))
     ]
     return min(rates) / 2 if rates else None
@@ -292,8 +327,9 @@ def check_file(task):
     """Compare all CASES for the channel epochs of a task; returns (stats, output lines)."""
     binary, rtol, rtol_above, verbose = task[3:]
     stats = dict(ok=0, bad=0, both_error=0, only_c_error=0, only_py_error=0, deliberate=0)
-    return _check_epochs(task, stats, lambda source, index, work:
-                         _check_channel(source, index, work, binary, rtol, rtol_above, verbose))
+    return _check_epochs(
+        task, stats, lambda source, index, work: _check_channel(source, index, work, binary, rtol, rtol_above, verbose)
+    )
 
 
 def _check_channel(source, index, work, binary, rtol, rtol_above, verbose):
@@ -329,8 +365,9 @@ def _check_channel(source, index, work, binary, rtol, rtol_above, verbose):
             stats["only_py_error"] += 1
             lines.append(f"PY ERROR ONLY {label}\n   py: {err_p[:200]}")
         else:
-            msg = compare(rows_c, rows_p, rtol, nyquist=_nyquist(chan, case.get("stages")),
-                          rtol_above_nyquist=rtol_above)
+            msg = compare(
+                rows_c, rows_p, rtol, nyquist=_nyquist(chan, case.get("stages")), rtol_above_nyquist=rtol_above
+            )
             if msg:
                 stats["bad"] += 1
                 lines.append(f"MISMATCH {label}\n   {msg}")
@@ -348,6 +385,7 @@ def _run_tasks(fn, tasks, jobs, stats):
     """Run tasks (in parallel when jobs > 1); print each task's lines in task order
     and add its counts to ``stats``.  Pending tasks are dropped on interrupt;
     running ones finish."""
+
     def collect(results):
         for delta, lines in results:
             for line in lines:
@@ -370,8 +408,12 @@ def main():
     ap.add_argument("binary")
     ap.add_argument("files", nargs="+", metavar="PATH", help="response file, or directory searched recursively")
     ap.add_argument("--rtol", type=float, default=2e-6)
-    ap.add_argument("--rtol-above-nyquist", type=float, default=1e-4,
-                    help="tolerance for frequencies above the channel's Nyquist frequency")
+    ap.add_argument(
+        "--rtol-above-nyquist",
+        type=float,
+        default=1e-4,
+        help="tolerance for frequencies above the channel's Nyquist frequency",
+    )
     ap.add_argument("-v", action="store_true")
     ap.add_argument("--formats", action="store_true", help="compare FAP/AP text output instead of complex spectra")
     ap.add_argument("-j", "--jobs", type=int, default=1, help="number of comparisons to run in parallel")
@@ -392,7 +434,6 @@ def main():
     return 1 if stats["bad"] or stats["only_py_error"] else 0
 
 
-
 # --------------------------------------------------------------------------- text formats
 #
 # The complex-spectra comparison above validates the numbers.  The FAP and AP
@@ -408,12 +449,34 @@ FORMAT_CASES = [
 
 def run_c_format(binary, file, chan, when, case, workdir):
     from pathlib import Path as _P
+
     mn, mx, n, spacing = case["freqs"]
     for old in _P(workdir).glob("[AFPS]*.*"):
         old.unlink()
-    cmd = [binary, chan.station, chan.channel, str(when.year), str(when.timetuple().tm_yday), repr(mn), repr(mx),
-           str(n), "-f", str(file), "-u", "def", "-s", spacing, "-r", case["fmt"],
-           "-t", when.strftime("%H:%M:%S"), "-n", chan.network or "*", "-l", chan.location or "??"] + case["extra"]
+    cmd = [
+        binary,
+        chan.station,
+        chan.channel,
+        str(when.year),
+        str(when.timetuple().tm_yday),
+        repr(mn),
+        repr(mx),
+        str(n),
+        "-f",
+        str(file),
+        "-u",
+        "def",
+        "-s",
+        spacing,
+        "-r",
+        case["fmt"],
+        "-t",
+        when.strftime("%H:%M:%S"),
+        "-n",
+        chan.network or "*",
+        "-l",
+        chan.location or "??",
+    ] + case["extra"]
     p = subprocess.run(cmd, cwd=workdir, capture_output=True, text=True)
     if p.returncode != 0:
         return None
@@ -428,11 +491,17 @@ def run_c_format(binary, file, chan, when, case, workdir):
 
 def compare_formats(binary, source, index, chan, when, case, workdir, rtol=2e-6):
     from seismic_response.output import render
-    found = sr.select_channels(source.channels, network=[chan.network], station=[chan.station],
-                               location=[chan.location], channel=[chan.channel], time=when)
+
+    found = sr.select_channels(
+        source.channels,
+        network=[chan.network],
+        station=[chan.station],
+        location=[chan.location],
+        channel=[chan.channel],
+        time=when,
+    )
     mn, mx, n, spacing = case["freqs"]
-    res = sr.evaluate(found[0], sr.generate_frequencies(mn, mx, n, linear=spacing == "lin"),
-                      unit="def")
+    res = sr.evaluate(found[0], sr.generate_frequencies(mn, mx, n, linear=spacing == "lin"), unit="def")
     ref = run_c_format(binary, source.input_file(workdir), chan, when, case, workdir)
     if ref is None and source.blocks is not None:
         ref = run_c_format(binary, source.block_file(index, workdir), chan, when, case, workdir)
@@ -447,7 +516,7 @@ def compare_formats(binary, source, index, chan, when, case, workdir, rtol=2e-6)
         rows_p = mine[prefix]
         if len(rows_c) != len(rows_p):
             return f"{prefix}: row count"
-        for (rc, rp) in zip(rows_c, rows_p):
+        for rc, rp in zip(rows_c, rows_p):
             amp_idx = 1 if prefix in ("FAP", "AMP") else None
             if amp_idx is not None and not close(rc[1], rp[1], max(rtol, 1e-5)) and abs(rc[1] - rp[1]) > 1e-9 * peak:
                 return f"{prefix}: amplitude {rc} vs {rp}"
@@ -464,8 +533,11 @@ def compare_formats(binary, source, index, chan, when, case, workdir, rtol=2e-6)
 def check_file_formats(task):
     """Compare all FORMAT_CASES for the channel epochs of a task; returns (stats, output lines)."""
     binary = task[3]
-    return _check_epochs(task, dict(ok=0, bad=0, skipped=0), lambda source, index, work:
-                         _check_channel_formats(source, index, work, binary))
+    return _check_epochs(
+        task,
+        dict(ok=0, bad=0, skipped=0),
+        lambda source, index, work: _check_channel_formats(source, index, work, binary),
+    )
 
 
 def _check_channel_formats(source, index, work, binary):
@@ -484,8 +556,9 @@ def _check_channel_formats(source, index, work, binary):
             stats["skipped"] += 1
         elif msg:
             stats["bad"] += 1
-            lines.append(f"FORMAT MISMATCH {Path(file).name} {chan.nslc} {when:%Y-%m-%d} {case['fmt']} "
-                         f"{case['extra']}: {msg}")
+            lines.append(
+                f"FORMAT MISMATCH {Path(file).name} {chan.nslc} {when:%Y-%m-%d} {case['fmt']} {case['extra']}: {msg}"
+            )
         else:
             stats["ok"] += 1
     return stats, lines

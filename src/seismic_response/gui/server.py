@@ -189,8 +189,10 @@ def serve(
             try:
                 import webview  # type: ignore
             except ImportError:
-                print("pywebview is not installed (pip install 'seismic-response[desktop]'); "
-                      "falling back to the browser", file=sys.stderr)
+                print(
+                    "pywebview is not installed (pip install 'seismic-response[desktop]'); falling back to the browser",
+                    file=sys.stderr,
+                )
                 native = False
             else:
                 webview.create_window("Seismic Response", url, width=1280, height=860)

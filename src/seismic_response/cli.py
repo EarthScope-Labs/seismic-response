@@ -172,24 +172,40 @@ class _Args:
 
 
 _VALUE_OPTIONS = {
-    "-f": "file", "--file": "file",
-    "-u": "unit", "--units": "unit",
-    "-t": "time", "--time": "time",
-    "-s": "spacing", "--spacing": "spacing",
-    "-n": "network", "--network": "network",
-    "-l": "location", "--location": "location",
-    "-r": "format", "--response": "format",
-    "-b62_x": "b62_x", "--b62_x": "b62_x",
+    "-f": "file",
+    "--file": "file",
+    "-u": "unit",
+    "--units": "unit",
+    "-t": "time",
+    "--time": "time",
+    "-s": "spacing",
+    "--spacing": "spacing",
+    "-n": "network",
+    "--network": "network",
+    "-l": "location",
+    "--location": "location",
+    "-r": "format",
+    "--response": "format",
+    "-b62_x": "b62_x",
+    "--b62_x": "b62_x",
 }
 _FLAG_OPTIONS = {
-    "-stdio": "stdio", "--stdio": "stdio",
-    "-use-estimated-delay": "estimated_delay", "--use-estimated-delay": "estimated_delay",
-    "-use-delay": "estimated_delay", "--use-delay": "estimated_delay",
-    "-il": "interpolate", "--il": "interpolate",
-    "-ii": "interpolate", "--ii": "interpolate",
-    "-unwrap": "unwrap", "--unwrap": "unwrap",
-    "-ts": "total_sensitivity", "--ts": "total_sensitivity",
-    "-x": "xml", "--xml": "xml",
+    "-stdio": "stdio",
+    "--stdio": "stdio",
+    "-use-estimated-delay": "estimated_delay",
+    "--use-estimated-delay": "estimated_delay",
+    "-use-delay": "estimated_delay",
+    "--use-delay": "estimated_delay",
+    "-il": "interpolate",
+    "--il": "interpolate",
+    "-ii": "interpolate",
+    "--ii": "interpolate",
+    "-unwrap": "unwrap",
+    "--unwrap": "unwrap",
+    "-ts": "total_sensitivity",
+    "--ts": "total_sensitivity",
+    "-x": "xml",
+    "--xml": "xml",
 }
 
 
@@ -219,9 +235,7 @@ def parse_evalresp_args(argv: Sequence[str]) -> _Args:
     positionals, rest = tokens[:n_pos], tokens[n_pos:]
 
     if len(positionals) < 4:
-        raise _InputError(
-            f"Not all of the required inputs are present ({4 - len(positionals)} missing)"
-        )
+        raise _InputError(f"Not all of the required inputs are present ({4 - len(positionals)} missing)")
     a.stations, a.channels = positionals[0], positionals[1]
     try:
         a.year = int(positionals[2])

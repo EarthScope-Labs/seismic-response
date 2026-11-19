@@ -34,7 +34,9 @@ def lowpass(corner_hz=1.0, gain=1.0, units=(VEL, VOLTS)):
     """H(f) = 1 / (1 + i f/fc): a single pole at -2*pi*fc, normalized to unity DC gain."""
     p = -TWO_PI * corner_hz
     return Stage(
-        1, units[0], units[1],
+        1,
+        units[0],
+        units[1],
         PolesZeros("laplace_rad", [], [complex(p, 0)], a0=-p, a0_freq=0.0),
         gain=Gain(gain, 0.0),
     )
@@ -56,8 +58,9 @@ def test_single_pole_lowpass_matches_analytic_formula():
 def test_hertz_poles_equal_radian_poles_after_scaling():
     """Poles in Hz at fc is the same filter as poles in rad/s at 2*pi*fc."""
     rad = chan(lowpass(1.5))
-    hz = chan(Stage(1, VEL, VOLTS, PolesZeros("laplace_hz", [], [complex(-1.5, 0)], a0=1.5, a0_freq=0.0),
-                    gain=Gain(1.0, 0.0)))
+    hz = chan(
+        Stage(1, VEL, VOLTS, PolesZeros("laplace_hz", [], [complex(-1.5, 0)], a0=1.5, a0_freq=0.0), gain=Gain(1.0, 0.0))
+    )
     f = [0.05, 0.7, 1.5, 6.0]
     for a, b in zip(rad.evaluate(f, unit="def").values, hz.evaluate(f, unit="def").values):
         assert a == pytest.approx(b, rel=1e-12)
@@ -131,8 +134,11 @@ def test_units_come_from_the_first_stage_that_has_them():
 
 @pytest.mark.parametrize("unit", ["vel", "dis", "acc"])
 def test_overall_sensitivity_units_do_not_select_the_conversion(unit):
-    c = chan(Stage(1, gain=Gain(2.0, 1.0)), Stage(2, gain=Gain(5.0, 1.0)),
-             Stage(0, "M/S - Velocity", COUNTS, gain=Gain(10.0, 1.0)))
+    c = chan(
+        Stage(1, gain=Gain(2.0, 1.0)),
+        Stage(2, gain=Gain(5.0, 1.0)),
+        Stage(0, "M/S - Velocity", COUNTS, gain=Gain(10.0, 1.0)),
+    )
     with pytest.raises(sr.ResponseValueError, match="none documented"):
         c.evaluate([0.1, 1.0, 10.0], unit=unit)
     assert c.evaluate([0.1, 1.0, 10.0], unit="def").values == [10.0 + 0j] * 3
@@ -292,7 +298,10 @@ def test_per_stage_values_multiply_to_the_total(anmo):
 @pytest.mark.parametrize(
     "stages, message",
     [
-        ([Stage(1, VEL, VOLTS, PolesZeros("laplace_rad", [], [-1 + 0j], 1.0, 0.0), gain=Gain(0.0, 1.0))], "zero stage gain"),
+        (
+            [Stage(1, VEL, VOLTS, PolesZeros("laplace_rad", [], [-1 + 0j], 1.0, 0.0), gain=Gain(0.0, 1.0))],
+            "zero stage gain",
+        ),
         ([Stage(1, VEL, COUNTS, FIR("A", [1.0]), gain=Gain(1.0, 0.0))], "decimation"),
         ([Stage(1, VEL, VOLTS, PolesZeros("laplace_rad", [], [-1 + 0j], 1.0, 0.0))], "no stage gain"),
         (
@@ -302,7 +311,10 @@ def test_per_stage_values_multiply_to_the_total(anmo):
             ],
             "units mismatch",
         ),
-        ([Stage(1, "FURLONGS", VOLTS, PolesZeros("laplace_rad", [], [-1 + 0j], 1.0, 0.0), gain=Gain(1, 1))], "not ground motion"),
+        (
+            [Stage(1, "FURLONGS", VOLTS, PolesZeros("laplace_rad", [], [-1 + 0j], 1.0, 0.0), gain=Gain(1, 1))],
+            "not ground motion",
+        ),
         ([], "no response stages"),
     ],
 )
@@ -323,8 +335,14 @@ def test_estimated_delay_option_changes_asymmetric_fir_phase():
     """Asymmetric FIRs get a time shift: default = correction_applied - calculated delay,
     with the option = estimated delay.  The magnitude is unaffected."""
     sample_interval = 0.01
-    asym = Stage(1, COUNTS, COUNTS, FIR("A", [0.5, 0.3, 0.15, 0.05]),
-                 Decimation(100.0, 1, 0, estimated_delay=0.03, correction_applied=0.0), Gain(1.0, 0.0))
+    asym = Stage(
+        1,
+        COUNTS,
+        COUNTS,
+        FIR("A", [0.5, 0.3, 0.15, 0.05]),
+        Decimation(100.0, 1, 0, estimated_delay=0.03, correction_applied=0.0),
+        Gain(1.0, 0.0),
+    )
     c = chan(asym)
     f = 10.0
     a = c.evaluate([f], unit="def")
@@ -516,7 +534,9 @@ def test_default_unit_is_the_documented_unit(anmo):
     """Unlike evalresp (which defaults to velocity), the default is ``def``."""
     f = [0.5, 2.0]
     assert anmo[0].evaluate(f).values == anmo[0].evaluate(f, unit="def").values
-    c = chan(Stage(1, "M/S**2 - Acceleration", VOLTS, PolesZeros("laplace_rad", [], [-1 + 0j], 1.0, 0.0), gain=Gain(1, 1)))
+    c = chan(
+        Stage(1, "M/S**2 - Acceleration", VOLTS, PolesZeros("laplace_rad", [], [-1 + 0j], 1.0, 0.0), gain=Gain(1, 1))
+    )
     assert c.evaluate([1.0]).values == c.evaluate([1.0], unit="def").values
     assert c.evaluate([1.0]).values != c.evaluate([1.0], unit="vel").values
 

@@ -106,8 +106,7 @@ class _Block:
             if default is not None:
                 return default
             raise ResponseParseError(
-                f"Blockette {self.number} field {field:02d} missing "
-                f"(blockette starting at RESP line {self.line_no})"
+                f"Blockette {self.number} field {field:02d} missing (blockette starting at RESP line {self.line_no})"
             ) from None
         idx = raw.find(":")
         return (raw[idx + 1 :] if idx >= 0 else raw).strip()
@@ -180,9 +179,7 @@ def parse_resp(text: str, origin: str = "") -> List[Channel]:
 
         if blkt == 60 or 41 <= blkt <= 48 or blkt in (31, 33, 34, 35):
             if chan is not None and blkt in (60,):
-                raise ResponseParseError(
-                    f"RESP line {line_no}: dictionary references (blockette 60) are not supported"
-                )
+                raise ResponseParseError(f"RESP line {line_no}: dictionary references (blockette 60) are not supported")
             continue
 
         if blkt not in _STAGE_BLOCKETTES or chan is None:
@@ -327,9 +324,7 @@ def _build_filter(b: _Block) -> Tuple[object, Optional[str], Optional[str]]:
         count = b.number_value(8, int)
         rows = b.rows(9)
         if len(rows) < count:
-            raise ResponseParseError(
-                f"RESP line {b.line_no}: FIR declares {count} coefficients but has {len(rows)}"
-            )
+            raise ResponseParseError(f"RESP line {b.line_no}: FIR declares {count} coefficients but has {len(rows)}")
         try:
             coeffs = [float(r[1]) for r in rows[:count]]
         except (ValueError, IndexError):
@@ -375,9 +370,7 @@ def _type_code(b: _Block) -> str:
 def _complex_rows(b: _Block, field: int, count: int, what: str) -> List[complex]:
     rows = b.rows(field)
     if len(rows) < count:
-        raise ResponseParseError(
-            f"RESP line {b.line_no}: {count} {what}s declared but {len(rows)} found"
-        )
+        raise ResponseParseError(f"RESP line {b.line_no}: {count} {what}s declared but {len(rows)} found")
     out = []
     for row in rows[:count]:
         try:
@@ -390,9 +383,7 @@ def _complex_rows(b: _Block, field: int, count: int, what: str) -> List[complex]
 def _real_rows(b: _Block, field: int, count: int, what: str) -> List[float]:
     rows = b.rows(field)
     if len(rows) < count:
-        raise ResponseParseError(
-            f"RESP line {b.line_no}: {count} {what}s declared but {len(rows)} found"
-        )
+        raise ResponseParseError(f"RESP line {b.line_no}: {count} {what}s declared but {len(rows)} found")
     try:
         return [float(r[1]) for r in rows[:count]]
     except (ValueError, IndexError):
@@ -416,6 +407,4 @@ def _attach_filter(stage: Stage, new, in_units, out_units, b: _Block) -> None:
         current.amplitudes.extend(new.amplitudes)
         current.phases.extend(new.phases)
         return
-    raise ResponseParseError(
-        f"RESP line {b.line_no}: more than one filter type in stage {stage.sequence}"
-    )
+    raise ResponseParseError(f"RESP line {b.line_no}: more than one filter type in stage {stage.sequence}")

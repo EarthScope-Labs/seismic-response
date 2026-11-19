@@ -39,13 +39,15 @@ def main():
                     rows, err = ce.run_c(binary, source, index, chan, when, case, work)
                     if rows is None:
                         continue  # C rejected it (e.g. stage range with no matching stage)
-                    entries.append({
-                        "fixture": str(path.relative_to(data)),
-                        "nslc": chan.nslc,
-                        "time": when.strftime("%Y-%m-%dT%H:%M:%SZ"),
-                        "case": case,
-                        "rows": rows,
-                    })
+                    entries.append(
+                        {
+                            "fixture": str(path.relative_to(data)),
+                            "nslc": chan.nslc,
+                            "time": when.strftime("%Y-%m-%dT%H:%M:%SZ"),
+                            "case": case,
+                            "rows": rows,
+                        }
+                    )
     out = data / "golden" / "golden.json"
     out.parent.mkdir(parents=True, exist_ok=True)
     out.write_text(json.dumps(entries, separators=(",", ":")))

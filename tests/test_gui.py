@@ -114,7 +114,9 @@ def test_malformed_requests_are_returned_not_raised(req):
 def test_export_text_formats():
     web_api.load("x", ANMO)
     fap = json.loads(web_api.export_text(request(), "fap"))
-    assert fap["filename"] == "FAP.IU.ANMO.00.BHZ" and fap["text"].splitlines()[0].startswith("1.000000E-02 6.504193E+08")
+    assert fap["filename"] == "FAP.IU.ANMO.00.BHZ" and fap["text"].splitlines()[0].startswith(
+        "1.000000E-02 6.504193E+08"
+    )
     ap = json.loads(web_api.export_text(request(), "ap"))
     assert "# AMP.IU.ANMO.00.BHZ" in ap["text"] and "# PHASE.IU.ANMO.00.BHZ" in ap["text"]
     cs = json.loads(web_api.export_text(request(), "cs"))
