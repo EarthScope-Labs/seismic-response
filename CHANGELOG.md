@@ -1,5 +1,9 @@
 # Change Log
 
+## Unreleased (2026-11-18)
+
+- Raise package exceptions for invalid arguments and ambiguous channel selection, and add AmbiguousChannelError
+
 ## v0.1.0
 
 - Initial version

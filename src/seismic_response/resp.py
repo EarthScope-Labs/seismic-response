@@ -81,7 +81,7 @@ def parse_resp_time(value: str) -> Optional[datetime]:
         base = datetime(year, 1, 1, tzinfo=timezone.utc)
         return base + timedelta(days=jday - 1, hours=hour, minutes=minute, seconds=second)
     except (ValueError, IndexError, OverflowError) as exc:
-        raise ValueError(f"Cannot parse RESP time {value!r}") from exc
+        raise ResponseParseError(f"Cannot parse RESP time {value!r}") from exc
 
 
 class _Block:

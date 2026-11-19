@@ -20,6 +20,7 @@ from pathlib import Path
 from typing import List, Union
 
 from .errors import (
+    AmbiguousChannelError,
     ChannelNotFoundError,
     ResponseParseError,
     ResponseValueError,
@@ -87,6 +88,7 @@ __all__ = [
     "ResponseParseError",
     "ResponseValueError",
     "ChannelNotFoundError",
+    "AmbiguousChannelError",
     "UnsupportedFeatureError",
 ]
 
@@ -112,7 +114,7 @@ def parse_response(content: Union[str, bytes], origin: str = "", fmt: str = "aut
     if fmt == "resp":
         text = content.decode("utf-8", errors="replace") if isinstance(content, bytes) else content
         return parse_resp(text, origin)
-    raise ValueError(f"Unknown response format {fmt!r}")
+    raise ResponseValueError(f"Unknown response format {fmt!r}")
 
 
 def read_response(path: Union[str, Path], fmt: str = "auto") -> List[Channel]:

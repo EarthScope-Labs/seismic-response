@@ -9,6 +9,7 @@ from __future__ import annotations
 
 from typing import List, Tuple
 
+from .errors import ResponseValueError
 from .evaluate import ResponseResult
 
 __all__ = [
@@ -83,7 +84,7 @@ def render(
         ]
     if fmt == "cs":
         return [(output_filename(result, "cs", stdio), format_complex(result))]
-    raise ValueError(f"Unknown output format {fmt!r}; expected one of {OUTPUT_FORMATS}")
+    raise ResponseValueError(f"Unknown output format {fmt!r}; expected one of {OUTPUT_FORMATS}")
 
 
 def describe(result: ResponseResult, source: str = "") -> List[str]:

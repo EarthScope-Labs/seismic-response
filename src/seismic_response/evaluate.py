@@ -256,7 +256,7 @@ class _Options:
     def __init__(self, unit, stages, use_total_sensitivity, use_estimated_delay, b62_x, exclude=None):
         key = (unit or "def").lower()
         if key not in _UNIT_OPTIONS:
-            raise ValueError(f"Unit must be one of 'def', 'dis', 'vel', 'acc'; got {unit!r}")
+            raise ResponseValueError(f"Unit must be one of 'def', 'dis', 'vel', 'acc'; got {unit!r}")
         self.unit_key = key
         self.unit = _UNIT_OPTIONS[key]
         self.start, self.stop = stages if stages is not None else (None, None)

@@ -5,6 +5,7 @@ __all__ = [
     "ResponseParseError",
     "ResponseValueError",
     "ChannelNotFoundError",
+    "AmbiguousChannelError",
     "UnsupportedFeatureError",
 ]
 
@@ -27,6 +28,10 @@ class ResponseValueError(SeismicResponseError, ValueError):
 
 class ChannelNotFoundError(SeismicResponseError, LookupError):
     """No channel matched the requested identifier and time."""
+
+
+class AmbiguousChannelError(SeismicResponseError, ValueError):
+    """More than one channel matched where exactly one was expected."""
 
 
 class UnsupportedFeatureError(SeismicResponseError, NotImplementedError):

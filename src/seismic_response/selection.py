@@ -15,7 +15,7 @@ import logging
 from datetime import datetime
 from typing import Iterable, List, Optional, Sequence, Tuple, Union
 
-from .errors import ChannelNotFoundError
+from .errors import AmbiguousChannelError, ChannelNotFoundError
 from .model import Channel
 from .timeutil import ensure_utc
 
@@ -159,12 +159,12 @@ def select_channel(channels: Sequence[Channel], source_id: Optional[str] = None,
     """Like :func:`select_channels` but expects exactly one match.
 
     Raises :class:`~seismic_response.errors.ChannelNotFoundError` if nothing matches
-    and ``ValueError`` if the selection is ambiguous.
+    and :class:`~seismic_response.errors.AmbiguousChannelError` if the selection is ambiguous.
     """
     found = select_channels(channels, source_id, **kwargs)
     if not found:
         raise ChannelNotFoundError("No channel matches the requested identifier and time")
     if len(found) > 1:
         names = ", ".join(c.source_id for c in found[:5])
-        raise ValueError(f"Selection is ambiguous: {len(found)} channels match ({names}...)")
+        raise AmbiguousChannelError(f"Selection is ambiguous: {len(found)} channels match ({names}...)")
     return found[0]

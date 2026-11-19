@@ -10,10 +10,9 @@ Reading git state (`git status`, `git diff`, `git log`) is always fine.
 
 ## After applying a fix, do two things unprompted
 
-1. Report a single-line commit message: imperative mood. Say what the change does,
-   not how it was arrived at.
+1. Report a single-line commit message: imperative mood. Say what the change does, not how it was arrived at.
 
-2. Add that same line to `CHANGELOG.md` as a `- ` bullet in the top dated section:
+2. Add that same line to `CHANGELOG.md`, but only if the change is not relevant respective of the last release.  Add changes as a `- ` bullet in the top dated section:
 
    If the top section already carries a released version,
    start a new `## Unreleased` section above it,

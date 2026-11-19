@@ -6,6 +6,8 @@ import pytest
 
 import seismic_response as sr
 from seismic_response import Channel
+from seismic_response.resp import parse_resp_time
+from seismic_response.timeutil import parse_iso_time
 
 UTC = timezone.utc
 
@@ -92,3 +94,22 @@ def test_source_id_round_trip():
     assert sr.source_id_to_nslc("FDSN:XX_TEST__L_H_Z") == ("XX", "TEST", "", "LHZ")
     with pytest.raises(ValueError):
         sr.source_id_to_nslc("FDSN:XX_TEST")
+
+
+@pytest.mark.parametrize(
+    "call, error",
+    [
+        (lambda: sr.select_channel(CHANNELS, "FDSN:IU_ANMO_*", time=d(2010)), sr.AmbiguousChannelError),
+        (lambda: sr.source_id_to_nslc("FDSN:XX_TEST"), sr.ResponseValueError),
+        (lambda: sr.parse_response("", fmt="nope"), sr.ResponseValueError),
+        (lambda: sr.evaluate(CHANNELS[0], [1.0], unit="nope"), sr.ResponseValueError),
+        (lambda: parse_iso_time("2020-13-01"), sr.ResponseParseError),
+        (lambda: parse_iso_time("2020-01-01T00:00:00+24:00"), sr.ResponseParseError),
+        (lambda: parse_resp_time("2020,x"), sr.ResponseParseError),
+    ],
+)
+def test_argument_errors_are_package_errors(call, error):
+    with pytest.raises(error) as info:
+        call()
+    assert isinstance(info.value, sr.SeismicResponseError)
+    assert isinstance(info.value, ValueError)

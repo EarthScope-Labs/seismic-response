@@ -6,6 +6,8 @@ import re
 from datetime import datetime, timedelta, timezone
 from typing import Optional
 
+from .errors import ResponseParseError
+
 __all__ = ["parse_iso_time", "format_iso_time", "ensure_utc", "now_utc"]
 
 _ISO_RE = re.compile(
@@ -25,21 +27,24 @@ def parse_iso_time(value: str) -> datetime:
     """
     m = _ISO_RE.match(value)
     if not m:
-        raise ValueError(f"Cannot parse time {value!r}")
+        raise ResponseParseError(f"Cannot parse time {value!r}")
     year, month, day = int(m.group(1)), int(m.group(2)), int(m.group(3))
     hour = int(m.group(4) or 0)
     minute = int(m.group(5) or 0)
     second = int(m.group(6) or 0)
     frac = m.group(7)
     microsecond = int((frac + "000000")[:6]) if frac else 0
-    tz = timezone.utc
     zone = m.group(8)
-    if zone and zone != "Z":
-        sign = 1 if zone[0] == "+" else -1
-        digits = zone[1:].replace(":", "")
-        offset = timedelta(hours=int(digits[:2]), minutes=int(digits[2:4] or 0))
-        tz = timezone(sign * offset)
-    return datetime(year, month, day, hour, minute, second, microsecond, tzinfo=tz)
+    try:
+        tz = timezone.utc
+        if zone and zone != "Z":
+            sign = 1 if zone[0] == "+" else -1
+            digits = zone[1:].replace(":", "")
+            offset = timedelta(hours=int(digits[:2]), minutes=int(digits[2:4] or 0))
+            tz = timezone(sign * offset)
+        return datetime(year, month, day, hour, minute, second, microsecond, tzinfo=tz)
+    except ValueError:  # field out of range, e.g. month 13 or offset +24:00
+        raise ResponseParseError(f"Cannot parse time {value!r}") from None
 
 
 def format_iso_time(t: Optional[datetime]) -> Optional[str]:

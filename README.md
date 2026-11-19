@@ -52,7 +52,8 @@ sr.select_channels(channels, network="IU", station="ANMO", location="00,10", cha
 ```
 
 Errors derive from `SeismicResponseError` (`ResponseParseError`, `ResponseValueError`,
-`ChannelNotFoundError`, `UnsupportedFeatureError`).
+`ChannelNotFoundError`, `AmbiguousChannelError`, `UnsupportedFeatureError`); each of these except
+`ChannelNotFoundError` and `UnsupportedFeatureError` is also a `ValueError`.
 
 ## Command line
 

@@ -15,7 +15,9 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 from datetime import datetime
-from typing import List, Optional, Union
+from typing import List, Optional, Tuple, Union
+
+from .errors import ResponseValueError
 
 __all__ = [
     "PolesZeros",
@@ -243,7 +245,7 @@ def nslc_to_source_id(network: str = "", station: str = "", location: str = "", 
     return f"FDSN:{network}_{station}_{location}_{channel}"
 
 
-def source_id_to_nslc(source_id: str):
+def source_id_to_nslc(source_id: str) -> Tuple[str, str, str, str]:
     """Split an FDSN Source ID into (network, station, location, channel).
 
     >>> source_id_to_nslc("FDSN:IU_ANMO_00_B_H_Z")
@@ -252,7 +254,7 @@ def source_id_to_nslc(source_id: str):
     sid = source_id[5:] if source_id.upper().startswith("FDSN:") else source_id
     parts = sid.split("_")
     if len(parts) < 4:
-        raise ValueError(f"Not a channel level source identifier: {source_id!r}")
+        raise ResponseValueError(f"Not a channel level source identifier: {source_id!r}")
     net, sta, loc = parts[0], parts[1], parts[2]
     chan = "".join(parts[3:])
     return net, sta, loc, chan
