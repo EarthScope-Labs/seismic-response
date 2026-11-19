@@ -3,6 +3,7 @@
 import http.client
 import io
 import json
+import socket
 import threading
 import zipfile
 
@@ -146,6 +147,16 @@ def test_server_rejects_foreign_hosts_and_origins(live_server):
     assert http_call(live_server, "GET", "/api/ping", headers={"Host": "evil.example"})[0] == 403
     assert http_call(live_server, "POST", "/api/clear", "[]", {"Origin": "https://evil.example"})[0] == 403
     assert http_call(live_server, "POST", "/api/clear", "[]", {"Origin": f"http://127.0.0.1:{live_server}"})[0] == 200
+
+
+def test_server_rejects_bad_lengths_and_stalled_bodies(live_server, monkeypatch):
+    assert http_call(live_server, "POST", "/api/clear", headers={"Content-Length": "-1"})[0] == 400
+    monkeypatch.setattr(server._Handler, "timeout", 0.5)
+    with socket.create_connection(("127.0.0.1", live_server), timeout=10) as sock:
+        host = f"127.0.0.1:{live_server}"
+        sock.sendall(f"POST /api/clear HTTP/1.1\r\nHost: {host}\r\nContent-Length: 100\r\n\r\n[]".encode())
+        reply = sock.recv(1024)
+    assert reply.startswith(b"HTTP/1.0 408")
 
 
 def test_server_refuses_to_bind_to_public_interfaces(capsys):

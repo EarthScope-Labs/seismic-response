@@ -3,6 +3,7 @@
 ## Unreleased (2026-11-18)
 
 - Raise package exceptions for invalid arguments and ambiguous channel selection, and add AmbiguousChannelError
+- Reject negative Content-Length and time out stalled request bodies in the GUI server
 
 ## v0.1.0
 

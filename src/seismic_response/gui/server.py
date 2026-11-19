@@ -66,6 +66,7 @@ def build_static(dest: Path) -> None:
 
 class _Handler(BaseHTTPRequestHandler):
     server_version = f"seismic-response/{__version__}"
+    timeout = 30  # seconds a connection may stall before it is dropped
 
     # Quiet by default
     def log_message(self, fmt, *args):  # noqa: D401
@@ -113,10 +114,16 @@ class _Handler(BaseHTTPRequestHandler):
             length = int(self.headers.get("Content-Length", "0"))
         except ValueError:
             return self._send(400, b"bad length", "text/plain")
+        if length < 0:
+            return self._send(400, b"bad length", "text/plain")
         if length > _MAX_BODY:
             return self._send(413, b"too large", "text/plain")
         try:
-            args = json.loads(self.rfile.read(length) or b"[]")
+            body = self.rfile.read(length)
+        except TimeoutError:
+            return self._send(408, b"request timeout", "text/plain")
+        try:
+            args = json.loads(body or b"[]")
             if not isinstance(args, list):
                 raise ValueError("arguments must be a JSON array")
             with self.server.lock:  # the session store is shared
