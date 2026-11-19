@@ -103,7 +103,8 @@ def select_channels(
 ) -> List[Channel]:
     """Select channels by identifier and time (see module docstring for the rules).
 
-    ``source_id`` is an FDSN Source Identifier glob such as ``FDSN:IU_ANMO_*``.
+    ``source_id`` is an FDSN Source Identifier glob such as ``FDSN:IU_ANMO_*``; the
+    ``FDSN:`` prefix is optional and matched without regard to case.
     ``network``, ``station``, ``location`` and ``channel`` are SEED code globs
     (comma or space separated lists allowed).  All filters combine with AND.
     """
@@ -121,10 +122,18 @@ def select_channels(
     return _select(channels, sncls, source_id, time)
 
 
+def _source_id_matches(c: Channel, pattern: str) -> bool:
+    """Glob match against the Source ID, with or without its ``FDSN:`` prefix (in any case)."""
+    if pattern[:5].upper() == "FDSN:":
+        pattern = "FDSN:" + pattern[5:]
+    sid = c.source_id
+    return _glob(sid, pattern) or _glob(sid[5:], pattern)
+
+
 def _select(
     channels: Sequence[Channel], sncls: Sequence[_Sncl], source_id: Optional[str], time: Optional[datetime]
 ) -> List[Channel]:
-    pool: List[Optional[Channel]] = [c for c in channels if source_id is None or _glob(c.source_id, source_id)]
+    pool: List[Optional[Channel]] = [c for c in channels if source_id is None or _source_id_matches(c, source_id)]
     result: List[Channel] = []
     warn = False
     for i, cand in enumerate(pool):

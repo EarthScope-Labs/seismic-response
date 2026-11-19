@@ -81,6 +81,13 @@ def test_source_id_glob():
     assert sr.select_channels(CHANNELS, "FDSN:IU_ANMO_00_B_H_Z", time=d(2003))[0].end_time == d(2005)
 
 
+def test_source_id_prefix_is_optional():
+    full = sr.select_channels(CHANNELS, "FDSN:IU_ANMO_*", time=d(2010))
+    assert sr.select_channels(CHANNELS, "IU_ANMO_*", time=d(2010)) == full
+    assert sr.select_channels(CHANNELS, "fdsn:IU_ANMO_*", time=d(2010)) == full
+    assert len(sr.select_channels(CHANNELS, "F*", time=d(2010))) == len(sr.select_channels(CHANNELS, time=d(2010)))
+
+
 def test_select_channel_requires_exactly_one():
     assert sr.select_channel(CHANNELS, "FDSN:IU_COLA_*").channel == "LHZ"
     with pytest.raises(sr.ChannelNotFoundError):
