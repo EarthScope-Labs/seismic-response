@@ -5,6 +5,7 @@
 - Raise package exceptions for invalid arguments and ambiguous channel selection, and add AmbiguousChannelError
 - Reject negative Content-Length and time out stalled request bodies in the GUI server
 - Return an error from the GUI API for malformed requests and out-of-range channel ids
+- Report an unusable GUI server port as an error instead of a traceback
 
 ## v0.1.0
 

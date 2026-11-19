@@ -4,6 +4,7 @@ import http.client
 import io
 import json
 import socket
+import sys
 import threading
 import zipfile
 
@@ -177,6 +178,13 @@ def test_server_rejects_bad_lengths_and_stalled_bodies(live_server, monkeypatch)
         sock.sendall(f"POST /api/clear HTTP/1.1\r\nHost: {host}\r\nContent-Length: 100\r\n\r\n[]".encode())
         reply = sock.recv(1024)
     assert reply.startswith(b"HTTP/1.0 408")
+
+
+def test_server_reports_unusable_ports(live_server, capsys):
+    assert server.serve(port=70000, open_browser=False) == 2
+    if sys.platform != "win32":  # SO_REUSEADDR lets Windows bind a port in use
+        assert server.serve(port=live_server, open_browser=False) == 2
+    assert "cannot listen" in capsys.readouterr().err
 
 
 def test_server_refuses_to_bind_to_public_interfaces(capsys):

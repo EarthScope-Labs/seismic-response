@@ -171,7 +171,11 @@ def serve(
     server_class = _Server
     if host == "::1":
         server_class = type("_Server6", (_Server,), {"address_family": socket.AF_INET6})
-    server = server_class((host, port), _Handler)
+    try:
+        server = server_class((host, port), _Handler)
+    except (OSError, OverflowError) as exc:  # port in use or out of range
+        print(f"error: cannot listen on {host} port {port}: {exc}", file=sys.stderr)
+        return 2
     url = f"http://{host if host != '::1' else '[::1]'}:{server.server_address[1]}/"
     print(f"seismic-response GUI at {url}  (Ctrl-C to quit)")
 
