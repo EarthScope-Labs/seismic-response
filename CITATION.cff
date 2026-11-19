@@ -2,7 +2,7 @@ cff-version: 1.2.0
 message: "If you use this software, please cite it using the metadata from this file."
 type: software
 title: "seismic-response"
-version: "0.1.0"
+version: "0.2.0"
 abstract: >-
   Evaluate seismological instrument responses (StationXML, SEED RESP, SAC poles-and-zeros)
   with evalresp-compatible output. Pure Python library, evalresp-compatible command line,

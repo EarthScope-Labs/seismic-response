@@ -32,7 +32,7 @@ def citation_version() -> str:
 
 def changelog_section(version: str) -> str:
     text = (ROOT / "CHANGELOG.md").read_text(encoding="utf-8")
-    m = re.search(rf"^##[ \t]+v?{re.escape(version)}(?:[ \t].*)?$\n(.*?)(?=^##[ \t]|\Z)", text, re.M | re.S)
+    m = re.search(rf"^##[ \t]+v?{re.escape(version)}(?:[ \t][^\n]*)?$\n(.*?)(?=^##[ \t]|\Z)", text, re.M | re.S)
     if not m:
         sys.exit(f"error: CHANGELOG.md has no '## v{version}' section")
     notes = m.group(1).strip()

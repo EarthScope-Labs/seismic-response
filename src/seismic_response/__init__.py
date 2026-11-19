@@ -14,7 +14,7 @@ complex frequency response with results that match the C ``evalresp`` program::
 The package is pure Python (no dependencies) so it also runs under Pyodide.
 """
 
-__version__ = "0.1.0"
+__version__ = "0.2.0"
 
 from pathlib import Path
 from typing import List, Union
